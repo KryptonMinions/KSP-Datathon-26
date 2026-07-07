@@ -1,3 +1,25 @@
+# --- Node / Next.js (frontend) ---
+# Consolidated from frontend/.gitignore (create-next-app default) so the repo
+# has a single gitignore. Directory-scoped patterns are prefixed frontend/
+# since that .gitignore's own leading-slash anchors no longer apply once merged.
+node_modules/
+.next/
+frontend/out/
+frontend/build/
+frontend/coverage/
+frontend/.vercel
+next-env.d.ts
+npm-debug.log*
+*.tsbuildinfo
+.DS_Store
+*.pem
+
+# env files — ignore every variant everywhere, keep only the committed examples.
+# Supersedes the narrower .env.local-only rule: also catches future variants
+# like .env.production or .env.test before they're ever accidentally committed.
+.env*
+!.env.example
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -216,3 +238,16 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+/docs/
+
+# AI coding-agent guidance files (e.g. create-next-app output) — not app code,
+# kept on disk but excluded from version control, repo-wide.
+AGENTS.md
+CLAUDE.md
+
+# --- Frontend source override (MUST be last: the Python `lib/` rule above ---
+# otherwise swallows frontend/src/lib). Last matching pattern wins in gitignore.
+!frontend/src/lib/
+!frontend/src/lib/**
