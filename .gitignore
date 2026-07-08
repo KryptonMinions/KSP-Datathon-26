@@ -239,13 +239,9 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-
-/docs/
-
-# AI coding-agent guidance files (e.g. create-next-app output) — not app code,
-# kept on disk but excluded from version control, repo-wide.
-AGENTS.md
-CLAUDE.md
+#folders/directories to ignore
+/steering-docs/
+/References/
 
 # --- Frontend source override (MUST be last: the Python `lib/` rule above ---
 # otherwise swallows frontend/src/lib). Last matching pattern wins in gitignore.
