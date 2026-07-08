@@ -20,6 +20,9 @@ npm-debug.log*
 .env*
 !.env.example
 
+# real demo credentials for backend/scripts/provision_users.py — keep only the example
+backend/scripts/demo_users.json
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

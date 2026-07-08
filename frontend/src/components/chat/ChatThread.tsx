@@ -41,7 +41,7 @@ export function ChatThread({ inputSize = "default", emptyState }: ChatThreadProp
     const response = await mutateAsync({
       query,
       sessionId,
-      role: user?.role ?? "io",
+      role: user?.role ?? "investigating_officer",
     });
     setMessages((prev) => [...prev, response]);
   };

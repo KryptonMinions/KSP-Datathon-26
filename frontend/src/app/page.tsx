@@ -12,7 +12,7 @@ import type { Role } from "@/lib/types/auth";
 // user. This screen exists purely to let the 3-minute demo hop personas
 // quickly; a production build would start at the credential step.
 const ROLE_TILES: { role: Role; label: string; description: string; icon: typeof Shield }[] = [
-  { role: "io", label: "Investigating Officer", description: "Field lookups on the go", icon: Shield },
+  { role: "investigating_officer", label: "Investigating Officer", description: "Field lookups on the go", icon: Shield },
   { role: "supervisor", label: "Supervisor", description: "Unit oversight & review packs", icon: Users },
   { role: "analyst", label: "Crime Analyst", description: "Pattern & network analysis", icon: Search },
   { role: "admin", label: "Admin", description: "Audit & user management", icon: Settings },

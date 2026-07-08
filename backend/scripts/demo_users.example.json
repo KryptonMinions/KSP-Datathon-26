@@ -1,0 +1,6 @@
+[
+  { "username": "io.demo", "password": "change-me", "role": "investigating_officer" },
+  { "username": "supervisor.demo", "password": "change-me", "role": "supervisor" },
+  { "username": "analyst.demo", "password": "change-me", "role": "analyst" },
+  { "username": "admin.demo", "password": "change-me", "role": "admin" }
+]

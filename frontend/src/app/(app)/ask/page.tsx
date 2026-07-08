@@ -9,7 +9,7 @@ import { ChatThread } from "@/components/chat/ChatThread";
  */
 export default function AskPage() {
   const { user } = useAuth();
-  const isIo = user?.role === "io";
+  const isIo = user?.role === "investigating_officer";
 
   return (
     <ChatThread

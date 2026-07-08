@@ -26,7 +26,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
   if (!ready || !user) return null;
 
-  if (user.role === "io") {
+  if (user.role === "investigating_officer") {
     const shell = <MobileShell>{children}</MobileShell>;
     return DEMO_BEZEL ? <DeviceFrame>{shell}</DeviceFrame> : shell;
   }

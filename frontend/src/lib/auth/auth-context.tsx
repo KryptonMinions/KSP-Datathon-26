@@ -2,20 +2,21 @@
 
 import { createContext, useContext, useSyncExternalStore, type ReactNode } from "react";
 import type { AuthUser, Role } from "@/lib/types/auth";
+import { login as loginRequest } from "@/lib/auth/auth-api";
 
 const SESSION_KEY = "ksp-ask-auth-session";
 
 interface AuthContextValue {
   user: AuthUser | null;
   ready: boolean;
-  login: (role: Role, credentials: { username: string; password: string }) => AuthUser;
+  login: (credentials: { username: string; password: string }) => Promise<AuthUser>;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 const DEFAULT_UNIT: Record<Role, string> = {
-  io: "Indiranagar PS | Bengaluru Urban",
+  investigating_officer: "Indiranagar PS | Bengaluru Urban",
   supervisor: "Mysuru District",
   analyst: "DCRB Bengaluru Urban",
   admin: "System Administration",
@@ -76,13 +77,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // True once we're past the server-rendered pass and can trust `user`.
   const ready = useSyncExternalStore(noopSubscribe, () => true, () => false);
 
-  const login: AuthContextValue["login"] = (role, credentials) => {
-    // Mocked credential check — any non-empty username/password is accepted.
-    // There is no real auth backend yet; this only sets presentation state.
+  const login: AuthContextValue["login"] = async (credentials) => {
+    // Role Authority Rule (AUTH_ARCHITECTURE_5.md): the only trusted role
+    // is the one FastAPI returns from the server-verified JWT. The tile the
+    // user tapped on the role-select screen is never passed here and never
+    // used as an authorization input.
+    const session = await loginRequest(credentials.username, credentials.password);
     const authUser: AuthUser = {
-      name: credentials.username || "Demo User",
-      role,
-      unit: DEFAULT_UNIT[role],
+      id: session.user.id,
+      name: credentials.username,
+      role: session.user.role,
+      unit: DEFAULT_UNIT[session.user.role],
+      accessToken: session.access_token,
     };
     writeUser(authUser);
     return authUser;

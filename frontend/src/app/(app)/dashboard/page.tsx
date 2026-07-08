@@ -19,7 +19,7 @@ const STATS_BY_ROLE: Record<string, StatTile[]> = {
 
 /** Kept intentionally light — the four demo beats (via Ask) are prioritized over dashboard depth (steering-docs §10). */
 export default function DashboardPage() {
-  useRoleGuard((role) => role !== "io", "/ask");
+  useRoleGuard((role) => role !== "investigating_officer", "/ask");
   const { user } = useAuth();
   if (!user) return null;
 
