@@ -245,8 +245,11 @@ __marimo__/
 #folders/directories to ignore
 /steering-docs/
 /References/
+Architecture.md
 
 # --- Frontend source override (MUST be last: the Python `lib/` rule above ---
 # otherwise swallows frontend/src/lib). Last matching pattern wins in gitignore.
 !frontend/src/lib/
 !frontend/src/lib/**
+
+
