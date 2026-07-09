@@ -5,6 +5,9 @@ export interface AskInput {
   query: string;
   sessionId: string;
   role: Role;
+  /** Voice-sourced Ask messages carry these for audit/downstream use (steering-docs/VOICE_INTAKE_STEERING.md §4/§6). */
+  detectedLanguage?: "en" | "kn" | null;
+  inputModality?: "voice" | "typed";
 }
 
 /**

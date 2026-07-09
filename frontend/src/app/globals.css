@@ -16,7 +16,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
+  /* Kannada fallback layered in for code-mixed voice transcripts (§4) --
+     Inter has no Kannada glyphs, so those characters fall through to Noto Sans Kannada. */
+  --font-sans: var(--font-sans), var(--font-kannada);
   --font-mono: var(--font-mono);
   --font-heading: var(--font-sans);
   --color-sidebar-ring: var(--sidebar-ring);

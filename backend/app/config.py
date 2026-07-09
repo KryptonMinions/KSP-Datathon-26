@@ -12,6 +12,10 @@ class Settings(BaseSettings):
     synthetic_email_domain: str = "ksp.internal"
     frontend_origin: str = "http://localhost:3000"
 
+    # Sarvam AI Saaras v3 STT (VOICE_INTAKE_STEERING.md §7). Backend-only secret.
+    sarvam_api_key: str = ""
+    voice_intake_enabled: bool = True
+
 
 @lru_cache
 def get_settings() -> Settings:

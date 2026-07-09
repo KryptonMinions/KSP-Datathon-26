@@ -5,7 +5,7 @@ import type { ChatMessage } from "@/lib/types/content-blocks";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useAsk } from "@/lib/ask/use-ask";
 import { MessageBubble } from "./MessageBubble";
-import { QueryInput } from "./QueryInput";
+import { QueryInput, type SendMeta } from "./QueryInput";
 import { LoadingState } from "@/components/shared/LoadingState";
 import { ErrorState } from "@/components/shared/ErrorState";
 
@@ -29,7 +29,7 @@ export function ChatThread({ inputSize = "default", emptyState }: ChatThreadProp
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, isPending]);
 
-  const handleSend = async (query: string) => {
+  const handleSend = async (query: string, meta: SendMeta) => {
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
       role: "user",
@@ -42,6 +42,8 @@ export function ChatThread({ inputSize = "default", emptyState }: ChatThreadProp
       query,
       sessionId,
       role: user?.role ?? "investigating_officer",
+      detectedLanguage: meta.detectedLanguage,
+      inputModality: meta.inputModality,
     });
     setMessages((prev) => [...prev, response]);
   };

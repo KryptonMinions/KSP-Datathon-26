@@ -24,3 +24,12 @@ class LoginResponse(BaseModel):
 class CurrentUser(BaseModel):
     id: str
     role: Role
+
+
+class VoiceTranscribeResponse(BaseModel):
+    """Sarvam Saaras v3 transcript only -- no translation, no downstream
+    processing (VOICE_INTAKE_STEERING.md §3, Phase A)."""
+
+    transcript: str
+    detected_language: str | None = None
+    request_id: str | None = None
