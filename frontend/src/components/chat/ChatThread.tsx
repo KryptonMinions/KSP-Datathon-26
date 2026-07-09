@@ -19,10 +19,13 @@ interface ChatThreadProps {
 export function ChatThread({ inputSize = "default", emptyState }: ChatThreadProps) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [sessionId] = useState(
-    () => `session-${Math.random().toString(36).slice(2)}`,
-  );
-  const { mutateAsync, isPending, isError } = useAsk();
+  // Null starts a new server-side thread; set once the first response
+  // echoes one back (ASK_ENDPOINT_CONTRACT.md §2.3/§2.4). turnIndex is
+  // 0-based and monotonic per thread, tracked here since the service layer
+  // is stateless between calls.
+  const [threadId, setThreadId] = useState<string | null>(null);
+  const [turnIndex, setTurnIndex] = useState(0);
+  const { mutateAsync, isPending, isError, error } = useAsk();
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -38,14 +41,23 @@ export function ChatThread({ inputSize = "default", emptyState }: ChatThreadProp
     };
     setMessages((prev) => [...prev, userMessage]);
 
-    const response = await mutateAsync({
-      query,
-      sessionId,
-      role: user?.role ?? "investigating_officer",
-      detectedLanguage: meta.detectedLanguage,
-      inputModality: meta.inputModality,
-    });
-    setMessages((prev) => [...prev, response]);
+    try {
+      const response = await mutateAsync({
+        query,
+        threadId,
+        turnIndex,
+        role: user?.role ?? "investigating_officer",
+        detectedLanguage: meta.detectedLanguage,
+        inputModality: meta.inputModality,
+      });
+      setMessages((prev) => [...prev, response]);
+      if (response.threadId) setThreadId(response.threadId);
+      setTurnIndex((i) => i + 1);
+    } catch {
+      // A transport/validation failure is a distinct, retryable state from
+      // `no_answer` (a normal 200 response) -- isError/error below render
+      // it; nothing to append to the thread here (§3.5).
+    }
   };
 
   return (
@@ -56,7 +68,7 @@ export function ChatThread({ inputSize = "default", emptyState }: ChatThreadProp
           <MessageBubble key={message.id} message={message} />
         ))}
         {isPending && <LoadingState />}
-        {isError && <ErrorState />}
+        {isError && <ErrorState message={error instanceof Error ? error.message : undefined} />}
         <div ref={bottomRef} />
       </div>
       <QueryInput onSend={handleSend} disabled={isPending} size={inputSize} />

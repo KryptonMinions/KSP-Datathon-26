@@ -243,6 +243,7 @@ __marimo__/
 .streamlit/secrets.toml
 
 #folders/directories to ignore
+/backend/app/fixtures
 /steering-docs/
 /References/
 Architecture.md
@@ -252,4 +253,6 @@ Architecture.md
 !frontend/src/lib/
 !frontend/src/lib/**
 
+/.claude/
 
+/graphify-out/

@@ -127,4 +127,9 @@ export interface ChatMessage {
   timestamp: string;
   text?: string;
   blocks?: ContentBlock[];
+  /** Server-assigned thread id (ASK_ENDPOINT_CONTRACT.md §2.4) — the chat
+   * container carries this forward as `threadId` on the next AskInput so
+   * later turns land in the same thread. Undefined for user messages and
+   * for MockAskService responses (no server-side thread concept). */
+  threadId?: string;
 }

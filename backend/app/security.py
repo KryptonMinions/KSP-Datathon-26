@@ -44,21 +44,24 @@ def _get_signing_key(supabase_url: str, kid: str) -> jwt.PyJWK:
     return keys[kid]
 
 
-def get_current_user(
-    credentials: BearerCredentialsDep,
-    settings: SettingsDep,
-) -> CurrentUser:
-    """Verify the Supabase JWT and extract `sub` + `app_metadata.role`.
+def verify_jwt(token: str, settings: Settings) -> CurrentUser:
+    """Verify a raw Supabase JWT string and extract `sub` + `app_metadata.role`.
 
     Per AUTH_ARCHITECTURE_6.md's Role Authority Rule, this JWT is the only
     trusted role source. Nothing in this app should ever read a role from
     the request body, a query string, or any other client-supplied field.
+
+    Raises `HTTPException(401)` on any verification failure. Split out from
+    `get_current_user` so routes that need a differently-shaped 401 body
+    (e.g. `/ask`'s `{"error": {...}}` envelope, ASK_ENDPOINT_CONTRACT.md
+    §2.5) can call this directly instead of going through the FastAPI
+    dependency, which fixes its own error response shape.
     """
     try:
-        kid = jwt.get_unverified_header(credentials.credentials)["kid"]
+        kid = jwt.get_unverified_header(token)["kid"]
         signing_key = _get_signing_key(settings.supabase_url, kid)
         payload = jwt.decode(
-            credentials.credentials,
+            token,
             signing_key.key,
             algorithms=["ES256", "RS256"],
             audience="authenticated",
@@ -79,6 +82,13 @@ def get_current_user(
         )
 
     return CurrentUser(id=payload["sub"], role=role)
+
+
+def get_current_user(
+    credentials: BearerCredentialsDep,
+    settings: SettingsDep,
+) -> CurrentUser:
+    return verify_jwt(credentials.credentials, settings)
 
 
 CurrentUserDep = Annotated[CurrentUser, Depends(get_current_user)]

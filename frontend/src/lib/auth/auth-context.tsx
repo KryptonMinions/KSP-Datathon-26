@@ -108,3 +108,19 @@ export function useAuth(): AuthContextValue {
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 }
+
+/**
+ * Non-hook accessor for modules that aren't React components/hooks (e.g.
+ * `real-ask-service.ts`, ASK_ENDPOINT_CONTRACT.md §3.3: "read access token
+ * from the existing auth context"). Reads the same sessionStorage-backed
+ * session `useAuth()` does, just without the subscription machinery.
+ */
+export function getAccessToken(): string | undefined {
+  return readUser()?.accessToken;
+}
+
+/** Clears the session, e.g. after the backend rejects an expired/invalid
+ * token (`UnauthenticatedError`) outside of a component's render cycle. */
+export function clearSession(): void {
+  writeUser(null);
+}
