@@ -9,6 +9,7 @@ import {
 import { STORY4_QUERY, story4Response } from "@/lib/fixtures/story4-network";
 import { STORY2_QUERY, story2Response } from "@/lib/fixtures/story2-mo-match";
 import { STORY10_QUERY, story10Response } from "@/lib/fixtures/story10-review-pack";
+import { STORY_GEO_QUERY, storyGeoResponse } from "@/lib/fixtures/story-geo-map";
 import { buildNoAnswerResponse } from "@/lib/fixtures/no-answer";
 
 function normalize(query: string): string {
@@ -22,6 +23,7 @@ const RESPONSE_BY_QUERY: Record<string, ChatMessage> = {
   [STORY4_QUERY]: story4Response,
   [STORY2_QUERY]: story2Response,
   [STORY10_QUERY]: story10Response,
+  [STORY_GEO_QUERY]: storyGeoResponse,
 };
 
 function withFreshIds(message: ChatMessage): ChatMessage {

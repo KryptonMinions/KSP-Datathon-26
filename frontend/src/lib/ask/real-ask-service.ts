@@ -116,6 +116,34 @@ function wireToBlock(block: WireBlock): ContentBlock {
           : undefined,
         citations,
       };
+    case "map":
+      return {
+        id: block.id,
+        type: "map",
+        title: block.title ?? undefined,
+        center: { lat: block.center.lat, lng: block.center.lng },
+        zoom: block.zoom ?? undefined,
+        markers: block.markers.map((m: WireBlock) => ({
+          id: m.id,
+          lat: m.lat,
+          lng: m.lng,
+          kind: m.kind,
+          label: m.label,
+          firId: m.fir_id ?? undefined,
+          offence: m.offence ?? undefined,
+          date: m.date ?? undefined,
+          status: m.status ?? undefined,
+        })),
+        radius: block.radius
+          ? {
+              centerLat: block.radius.center_lat,
+              centerLng: block.radius.center_lng,
+              radiusMeters: block.radius.radius_meters,
+              label: block.radius.label ?? undefined,
+            }
+          : undefined,
+        citations,
+      };
     case "no_answer":
       return { id: block.id, type: "no_answer", message: block.message, citations };
     case "pack_report":

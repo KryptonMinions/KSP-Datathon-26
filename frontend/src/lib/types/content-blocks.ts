@@ -112,6 +112,37 @@ export interface PackReportBlock extends BaseBlock {
   exportable?: boolean;
 }
 
+export type MapMarkerKind = "fir" | "station" | "hotspot";
+
+export interface MapMarker {
+  id: string;
+  lat: number;
+  lng: number;
+  kind: MapMarkerKind;
+  label: string;
+  firId?: string;
+  offence?: string;
+  date?: string;
+  status?: string;
+}
+
+/** Optional radius overlay, e.g. the 500 m ring around a police station. */
+export interface MapRadius {
+  centerLat: number;
+  centerLng: number;
+  radiusMeters: number;
+  label?: string;
+}
+
+export interface MapBlock extends BaseBlock {
+  type: "map";
+  title?: string;
+  center: { lat: number; lng: number };
+  zoom?: number;
+  markers: MapMarker[];
+  radius?: MapRadius;
+}
+
 export type ContentBlock =
   | TextBlock
   | TableBlock
@@ -119,7 +150,8 @@ export type ContentBlock =
   | MoMatchBlock
   | CaseCardBlock
   | NoAnswerBlock
-  | PackReportBlock;
+  | PackReportBlock
+  | MapBlock;
 
 export interface ChatMessage {
   id: string;

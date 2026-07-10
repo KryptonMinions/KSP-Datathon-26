@@ -6,6 +6,7 @@ import { MoMatchBlock } from "./blocks/MoMatchBlock";
 import { NoAnswerBlock } from "./blocks/NoAnswerBlock";
 import { PackReportBlock } from "./blocks/PackReportBlock";
 import { NetworkGraphBlock } from "./blocks/NetworkGraphBlock";
+import { MapBlock } from "./blocks/MapBlock";
 
 /**
  * The renderer switch over block type — the core extensibility pattern of
@@ -29,5 +30,7 @@ export function BlockRenderer({ block }: { block: ContentBlock }) {
       return <PackReportBlock block={block} />;
     case "network_graph":
       return <NetworkGraphBlock block={block} />;
+    case "map":
+      return <MapBlock block={block} />;
   }
 }
