@@ -246,6 +246,7 @@ __marimo__/
 /backend/app/fixtures
 /steering-docs/
 /References/
+/dataset/
 Architecture.md
 
 # --- Frontend source override (MUST be last: the Python `lib/` rule above ---
@@ -256,3 +257,8 @@ Architecture.md
 /.claude/
 
 /graphify-out/
+
+# Data seeding (SEED_RUNBOOK.md) — generated outputs and narrative cache, never committed.
+/seed-sources/
+/scripts/seed/narrative_cache/
+

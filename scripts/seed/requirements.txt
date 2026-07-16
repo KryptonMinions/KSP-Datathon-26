@@ -1,0 +1,32 @@
+# Seeding-only dependencies (SEED_RUNBOOK.md). Deliberately isolated from
+# backend/requirements.txt — the backend app never imports these; only
+# scripts/seed/*.py does. Install into scripts/seed/.venv, not the repo-root venv.
+#
+# System tools required alongside this file (not installable via pip):
+#   brew install gdal libpq poppler ollama  # ogr2ogr, psql, pdftotext, local LLM
+#   ollama pull qwen2.5:7b-instruct         # English narrative generation model
+#
+# pdftotext -layout (poppler) is used for BNS/IPC PDF extraction (§2.1) instead
+# of a Python PDF library — it preserves the source PDFs' columnar layout far
+# more reliably, which the comparison-table and section-body regex parsers
+# in extract_bns.py depend on.
+#
+# Note: GDAL's Python bindings must match the brew-installed GDAL version.
+# geopandas pulls in fiona/pyogrio which links against the system GDAL.
+
+psycopg[binary]>=3.1
+python-dotenv>=1.0
+geopandas>=0.14
+pyogrio>=0.7    # geopandas IO engine; also used directly for lightweight CRS reads
+shapely>=2.0
+pandas>=2.2
+httpx>=0.27         # Ollama OpenAI-compatible client
+# transformers must stay pinned in the 4.4x range: IndicTrans2's custom
+# tokenizer/config code (loaded via trust_remote_code) predates transformers
+# 5.x's tokenizer-internals changes (_special_tokens_map handling) and the
+# removal of the transformers.onnx submodule — both break tokenizer loading
+# on newer transformers. Confirmed working at 4.44.2; do not casually bump.
+transformers==4.44.2
+torch>=2.2
+sentencepiece>=0.2
+IndicTransToolkit>=1.0  # AI4Bharat's pre/postprocessing wrapper for IndicTrans2
