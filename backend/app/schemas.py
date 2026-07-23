@@ -26,6 +26,10 @@ class LoginResponse(BaseModel):
 class CurrentUser(BaseModel):
     id: str
     role: Role
+    # Officer identity from app_metadata.officer_id (ORCHESTRATOR_STEERING.md
+    # O-11) — the only trusted officer-identity source, used for jurisdiction
+    # scope derivation and audit. Admin users have none.
+    officer_id: str | None = None
 
 
 class VoiceTranscribeResponse(BaseModel):
@@ -159,10 +163,19 @@ class CaseCardBlock(BaseModel):
     citations: list[Citation] | None = None
 
 
+NoAnswerReason = Literal[
+    "not_found", "low_confidence", "out_of_scope", "invalid_reference"
+]
+
+
 class NoAnswerBlock(BaseModel):
     type: Literal["no_answer"] = "no_answer"
     id: str
     message: str
+    # Graceful-refusal contract (DEMO_SCENARIOS.md §2.1). Optional for backward
+    # compatibility with existing fixtures; the frontend renders unknown/absent
+    # reasons as the generic calm block.
+    reason: NoAnswerReason | None = None
     citations: list[Citation] | None = None
 
 
@@ -184,6 +197,46 @@ class PackReportBlock(BaseModel):
     period: str
     metrics: list[TrendMetric]
     exportable: bool | None = None
+    # Signed download URL for the rendered PDF (SmartBrowz -> Stratus). Set
+    # server-side when PDF_EXPORT_ENABLED and the pack is exportable.
+    export_url: str | None = None
+    citations: list[Citation] | None = None
+
+
+# MapBlock — field-for-field identical to content-blocks.ts MapBlock (snake_case
+# wire; the frontend RealAskService already translates it to camelCase).
+class MapCenter(BaseModel):
+    lat: float
+    lng: float
+
+
+class MapMarker(BaseModel):
+    id: str
+    lat: float
+    lng: float
+    kind: Literal["fir", "station", "hotspot"]
+    label: str
+    fir_id: str | None = None
+    offence: str | None = None
+    date: str | None = None
+    status: str | None = None
+
+
+class MapRadius(BaseModel):
+    center_lat: float
+    center_lng: float
+    radius_meters: float
+    label: str | None = None
+
+
+class MapBlock(BaseModel):
+    type: Literal["map"] = "map"
+    id: str
+    title: str | None = None
+    center: MapCenter
+    zoom: int | None = None
+    markers: list[MapMarker]
+    radius: MapRadius | None = None
     citations: list[Citation] | None = None
 
 
@@ -196,6 +249,7 @@ ContentBlock = Annotated[
         CaseCardBlock,
         NoAnswerBlock,
         PackReportBlock,
+        MapBlock,
     ],
     Field(discriminator="type"),
 ]

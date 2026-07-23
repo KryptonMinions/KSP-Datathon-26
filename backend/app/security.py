@@ -72,7 +72,8 @@ def verify_jwt(token: str, settings: Settings) -> CurrentUser:
             detail="Invalid or expired token",
         ) from exc
 
-    role_value = (payload.get("app_metadata") or {}).get("role")
+    app_metadata = payload.get("app_metadata") or {}
+    role_value = app_metadata.get("role")
     try:
         role = Role(role_value)
     except ValueError:
@@ -81,7 +82,8 @@ def verify_jwt(token: str, settings: Settings) -> CurrentUser:
             detail="Token has no recognized role",
         )
 
-    return CurrentUser(id=payload["sub"], role=role)
+    officer_id = app_metadata.get("officer_id")
+    return CurrentUser(id=payload["sub"], role=role, officer_id=officer_id)
 
 
 def get_current_user(

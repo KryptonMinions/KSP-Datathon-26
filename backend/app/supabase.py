@@ -65,13 +65,21 @@ async def sign_in_with_password(email: str, password: str, settings: Settings) -
 
 
 async def admin_create_user(
-    username: str, password: str, role: Role, settings: Settings
+    username: str,
+    password: str,
+    role: Role,
+    settings: Settings,
+    officer_id: str | None = None,
 ) -> dict:
     """Provision a demo account: create the Supabase Auth user (secret key
-    only) with app_metadata.role, then record the username -> synthetic
-    email mapping used at login time.
+    only) with app_metadata.role (+ optional app_metadata.officer_id, the
+    trusted officer-identity source per ORCHESTRATOR_STEERING.md O-11), then
+    record the username -> synthetic email mapping used at login time.
     """
     email = _synthetic_email(username, settings)
+    app_metadata: dict[str, str] = {"role": role.value}
+    if officer_id:
+        app_metadata["officer_id"] = officer_id
     async with httpx.AsyncClient(base_url=settings.supabase_url) as client:
         create_resp = await client.post(
             "/auth/v1/admin/users",
@@ -79,7 +87,7 @@ async def admin_create_user(
                 "email": email,
                 "password": password,
                 "email_confirm": True,
-                "app_metadata": {"role": role.value},
+                "app_metadata": app_metadata,
             },
             headers={
                 "apikey": settings.supabase_secret_key,

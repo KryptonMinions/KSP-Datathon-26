@@ -1,6 +1,6 @@
 [
-  { "username": "io.demo", "password": "change-me", "role": "investigating_officer" },
-  { "username": "supervisor.demo", "password": "change-me", "role": "supervisor" },
-  { "username": "analyst.demo", "password": "change-me", "role": "analyst" },
+  { "username": "io.demo", "password": "change-me", "role": "investigating_officer", "officer_id": "KSP-23417" },
+  { "username": "supervisor.demo", "password": "change-me", "role": "supervisor", "officer_id": "KSP-10002" },
+  { "username": "analyst.demo", "password": "change-me", "role": "analyst", "officer_id": "KSP-10003" },
   { "username": "admin.demo", "password": "change-me", "role": "admin" }
 ]

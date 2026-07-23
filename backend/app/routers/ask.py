@@ -3,6 +3,7 @@ import sys
 import time
 import uuid
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -10,12 +11,29 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from app.schemas import AskRequest, AskResponse, AssistantMessage
+from app.schemas import AskRequest, AskResponse, AssistantMessage, NoAnswerBlock
 from app.security import SettingsDep, verify_jwt
 
 router = APIRouter(tags=["ask"])
 
 _FIXTURES_DIR = Path(__file__).resolve().parent.parent / "fixtures"
+
+# The demo fixtures are generated content (gitignored, per .gitignore), so a
+# fresh checkout may not have them. Loading is lazy + graceful: the app always
+# boots, and a missing/invalid fixture degrades to this no_answer rather than
+# crashing the import. When ASK_ENGINE=agent (P2+), fixtures aren't consulted.
+_FALLBACK_NO_ANSWER = AssistantMessage(
+    blocks=[
+        NoAnswerBlock(
+            id="no-answer-fallback",
+            message=(
+                "Not enough verified information to answer this. Try rephrasing, "
+                "or consult the case file directly."
+            ),
+            reason="not_found",
+        )
+    ]
+)
 
 
 def _normalize(query: str) -> str:
@@ -24,48 +42,70 @@ def _normalize(query: str) -> str:
     return " ".join(query.strip().lower().split())
 
 
-def _load_message(filename: str) -> AssistantMessage:
-    data = json.loads((_FIXTURES_DIR / filename).read_text())
-    return AssistantMessage.model_validate(data)
+def _try_load(filename: str) -> AssistantMessage | None:
+    try:
+        data = json.loads((_FIXTURES_DIR / filename).read_text())
+        return AssistantMessage.model_validate(data)
+    except (FileNotFoundError, json.JSONDecodeError, ValidationError):
+        return None
 
 
-def _load_story1() -> dict[str, AssistantMessage]:
-    data = json.loads((_FIXTURES_DIR / "story1_antecedents.json").read_text())
-    return {key: AssistantMessage.model_validate(value) for key, value in data.items()}
+def _try_load_story1() -> dict[str, AssistantMessage]:
+    try:
+        data = json.loads((_FIXTURES_DIR / "story1_antecedents.json").read_text())
+        return {k: AssistantMessage.model_validate(v) for k, v in data.items()}
+    except (FileNotFoundError, json.JSONDecodeError, ValidationError):
+        return {}
 
 
-_STORY1 = _load_story1()
-_NO_ANSWER_MESSAGE = _load_message("no_answer.json")
+@lru_cache(maxsize=1)
+def _no_answer_message() -> AssistantMessage:
+    return _try_load("no_answer.json") or _FALLBACK_NO_ANSWER
+
 
 # Dispatch keyed by the exact verbatim demo-script query strings (References/
 # KSP_Demo_Script.pdf), matching frontend/src/lib/fixtures/story*.ts's
 # STORY*_QUERY constants exactly so mock and real paths dispatch identically.
-_DISPATCH: dict[str, tuple[str, AssistantMessage]] = {
-    _normalize("rajan gowda antecedents — any cases in karnataka?"): (
-        "story1_antecedents.q1",
-        _STORY1["q1"],
-    ),
-    _normalize("show me only the violent offences from those results"): (
-        "story1_antecedents.q2",
-        _STORY1["q2"],
-    ),
-    _normalize("is he history-sheeted anywhere?"): (
-        "story1_antecedents.q3",
-        _STORY1["q3"],
-    ),
-    _normalize(
-        "show me everyone connected to him — co-accused, associates, shared addresses"
-    ): ("story4_network", _load_message("story4_network.json")),
-    _normalize(
-        "find similar past cases: accused on two-wheeler approaches female victim at "
-        "traffic signal, snatches gold chain, flees towards main road. how were the "
-        "solved ones cracked?"
-    ): ("story2_mo_match", _load_message("story2_mo_match.json")),
-    _normalize(
-        "what changed in mysuru district this month compared to last month — and "
-        "what is driving the change?"
-    ): ("story10_review_pack", _load_message("story10_review_pack.json")),
-}
+# Built lazily and cached; entries whose fixture is missing are simply omitted
+# (that query then falls through to the no_answer message).
+@lru_cache(maxsize=1)
+def _dispatch() -> dict[str, tuple[str, AssistantMessage]]:
+    table: dict[str, tuple[str, AssistantMessage]] = {}
+    story1 = _try_load_story1()
+    story1_keys = {
+        "rajan gowda antecedents — any cases in karnataka?": "q1",
+        "show me only the violent offences from those results": "q2",
+        "is he history-sheeted anywhere?": "q3",
+    }
+    for query, key in story1_keys.items():
+        if key in story1:
+            table[_normalize(query)] = (f"story1_antecedents.{key}", story1[key])
+
+    single: list[tuple[str, str, str]] = [
+        (
+            "show me everyone connected to him — co-accused, associates, shared addresses",
+            "story4_network",
+            "story4_network.json",
+        ),
+        (
+            "find similar past cases: accused on two-wheeler approaches female victim at "
+            "traffic signal, snatches gold chain, flees towards main road. how were the "
+            "solved ones cracked?",
+            "story2_mo_match",
+            "story2_mo_match.json",
+        ),
+        (
+            "what changed in mysuru district this month compared to last month — and "
+            "what is driving the change?",
+            "story10_review_pack",
+            "story10_review_pack.json",
+        ),
+    ]
+    for query, name, filename in single:
+        message = _try_load(filename)
+        if message is not None:
+            table[_normalize(query)] = (name, message)
+    return table
 
 
 def _error(status_code: int, code: str, message: str, request_id: str) -> JSONResponse:
@@ -103,8 +143,8 @@ async def ask(request: Request, settings: SettingsDep) -> Response:
 
     thread_id = body.thread_id or str(uuid.uuid4())
     normalized_query = _normalize(body.query)
-    matched = _DISPATCH.get(normalized_query)
-    matched_fixture, message = matched if matched else (None, _NO_ANSWER_MESSAGE)
+    matched = _dispatch().get(normalized_query)
+    matched_fixture, message = matched if matched else (None, _no_answer_message())
 
     server_ts = datetime.now(timezone.utc).isoformat()
     response = AskResponse(

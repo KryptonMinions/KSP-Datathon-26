@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,6 +16,56 @@ class Settings(BaseSettings):
     # Sarvam AI Saaras v3 STT (VOICE_INTAKE_STEERING.md §7). Backend-only secret.
     sarvam_api_key: str = ""
     voice_intake_enabled: bool = True
+
+    # --- Orchestrator / agent engine (ORCHESTRATOR_STEERING.md §2.1) -------
+    # fixture = current dispatch shell; agent = the tool-calling orchestrator.
+    ask_engine: Literal["fixture", "agent"] = "fixture"
+    ask_max_turn_seconds: int = 45
+    ask_token_budget: int = 60000
+    ask_tool_timeout_s: int = 10
+    ask_sql_row_cap: int = 200
+    ask_sql_statement_timeout_ms: int = 8000
+    ask_thread_ttl_s: int = 3600
+    # ISO date (YYYY-MM-DD); when set, overrides "today" for relative-date
+    # resolution and prompts. Align with SEED_DEMO_DATE.
+    ask_reference_date: str = ""
+
+    # --- LLM profiles (SEMANTIC_LAYER.md Part 1; ORCHESTRATOR_STEERING.md O-9)
+    # OpenAI-compatible endpoints. fast = gemini-2.5-flash, smart =
+    # gemini-2.5-pro via Google's OpenAI-compat base URL. Model IDs are env
+    # values only, never hardcoded.
+    llm_profile_fast_base_url: str = ""
+    llm_profile_fast_model: str = ""
+    llm_profile_fast_api_key: str = ""
+    llm_profile_smart_base_url: str = ""
+    llm_profile_smart_model: str = ""
+    llm_profile_smart_api_key: str = ""
+    # Optional third profile for the single non-tool-calling semantic-layer
+    # call routed through Zoho Catalyst QuickML (Qwen, IN data center). Falls
+    # back to the fast profile when unset or on transport/output error.
+    llm_profile_intent_base_url: str = ""
+    llm_profile_intent_model: str = ""
+    llm_profile_intent_api_key: str = ""
+    llm_max_retries: int = 2
+    llm_request_timeout_s: int = 30
+
+    # --- Embeddings (multilingual-e5-base, 768-dim; must match seed 04_embed)
+    embeddings_base_url: str = ""
+    embeddings_model: str = ""
+    embeddings_api_key: str = ""
+
+    # --- Zoho Catalyst integration (config seams; each optional) -----------
+    # Thread/session store backend. memory = in-process (single-worker);
+    # catalyst = Catalyst Cache (durable, multi-worker safe).
+    thread_store_backend: Literal["memory", "catalyst"] = "memory"
+    pdf_export_enabled: bool = False
+    catalyst_project_id: str = ""
+    catalyst_project_domain: str = ""
+    catalyst_oauth_token_url: str = ""
+    catalyst_oauth_client_id: str = ""
+    catalyst_oauth_client_secret: str = ""
+    catalyst_oauth_refresh_token: str = ""
+    catalyst_stratus_bucket: str = ""
 
 
 @lru_cache
