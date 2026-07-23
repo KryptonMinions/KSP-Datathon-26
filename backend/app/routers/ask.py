@@ -11,6 +11,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
+from app import agent
 from app.schemas import AskRequest, AskResponse, AssistantMessage, NoAnswerBlock
 from app.security import SettingsDep, verify_jwt
 
@@ -140,6 +141,14 @@ async def ask(request: Request, settings: SettingsDep) -> Response:
         body = AskRequest.model_validate(raw_body)
     except (json.JSONDecodeError, ValidationError, ValueError):
         return _error(422, "invalid_request", "Invalid request body", request_id)
+
+    if settings.ask_engine == "agent":
+        response = await agent.run_turn(body, current_user, settings, request_id=request_id)
+        return JSONResponse(
+            status_code=200,
+            content=jsonable_encoder(response),
+            headers={"X-Request-Id": request_id},
+        )
 
     thread_id = body.thread_id or str(uuid.uuid4())
     normalized_query = _normalize(body.query)

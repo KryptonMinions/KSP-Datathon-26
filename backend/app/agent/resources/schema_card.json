@@ -1,0 +1,294 @@
+{
+  "districts": {
+    "purpose": "KSP police units (31 districts + 6 commissionerates). Not revenue districts.",
+    "pk": "district_id",
+    "columns": {
+      "district_id": "CHAR(3) PK, e.g. 'MYS', 'BLR'",
+      "district_name": "text",
+      "unit_type": "'District' | 'Commissionerate'",
+      "hq_city": "text"
+    },
+    "joins": ["firs.district_id = districts.district_id", "police_stations.district_id = districts.district_id"]
+  },
+  "police_stations": {
+    "purpose": "Police stations with geo point + jurisdiction polygon.",
+    "pk": "station_id",
+    "columns": {
+      "station_id": "CHAR(10) PK",
+      "station_name": "text",
+      "district_id": "-> districts",
+      "circle_id": "-> circles (nullable)",
+      "geom": "geography(Point,4326)",
+      "jurisdiction_boundary": "geography(MultiPolygon,4326)"
+    },
+    "joins": ["firs.station_id = police_stations.station_id"]
+  },
+  "admin_boundaries": {"purpose": "Real administrative polygons (State/District/Taluk/Hobli).", "pk": "boundary_id", "columns": {"boundary_id": "UUID PK", "boundary_type": "'State'|'District'|'Taluk'|'Hobli'", "name": "text", "ref_district_id": "-> districts", "geom": "geography(MultiPolygon,4326)"}},
+  "sub_divisions": {"purpose": "Synthesized station groupings.", "pk": "subdivision_id", "columns": {"subdivision_id": "CHAR(6) PK", "subdivision_name": "text", "district_id": "-> districts"}},
+  "circles": {"purpose": "Synthesized circle groupings under sub_divisions.", "pk": "circle_id", "columns": {"circle_id": "CHAR(8) PK", "circle_name": "text", "subdivision_id": "-> sub_divisions"}},
+  "localities": {
+    "purpose": "Geocoding gazetteer (wards/areas/layouts/villages).",
+    "pk": "locality_id",
+    "columns": {
+      "locality_id": "UUID PK",
+      "locality_name": "text",
+      "aliases": "text[]",
+      "locality_type": "'Ward'|'Village'|'Area'|'Layout'|'Town'|'Hobli'",
+      "district_id": "-> districts",
+      "primary_station_id": "-> police_stations",
+      "centroid": "geography(Point,4326) NOT NULL",
+      "boundary": "geography(MultiPolygon,4326)"
+    },
+    "joins": ["firs.incident_locality_id = localities.locality_id"]
+  },
+  "officers": {
+    "purpose": "Police officers. Trusted officer identity = app_metadata.officer_id.",
+    "pk": "officer_id",
+    "columns": {
+      "officer_id": "VARCHAR(15) PK, e.g. 'KSP-23417'",
+      "name": "text",
+      "rank": "text",
+      "station_id": "-> police_stations",
+      "district_id": "-> districts",
+      "role": "'IO'|'SHO'|'Circle_Inspector'|'Supervisor'|'Analyst'|'Admin'",
+      "is_active": "boolean"
+    },
+    "joins": ["firs.io_officer_id = officers.officer_id"]
+  },
+  "bns_sections": {
+    "purpose": "Bharatiya Nyaya Sanhita sections (+ IPC equivalents).",
+    "pk": "section_id",
+    "columns": {
+      "section_id": "VARCHAR(10) PK",
+      "bns_section": "text, e.g. '309'",
+      "bns_description": "text",
+      "offence_category": "'Property'|'Person'|'Sexual'|'Economic'|'Public_Order'|'Narcotics'|'Cyber'",
+      "is_cognizable": "boolean",
+      "chargesheet_days": "int (statutory chargesheet window)"
+    },
+    "joins": ["firs.primary_bns_section = bns_sections.section_id", "crime_types.primary_bns_section = bns_sections.section_id"]
+  },
+  "crime_types": {
+    "purpose": "Crime type taxonomy.",
+    "pk": "crime_type_id",
+    "columns": {
+      "crime_type_id": "VARCHAR(20) PK",
+      "crime_type_name": "text",
+      "parent_category": "text",
+      "primary_bns_section": "-> bns_sections",
+      "severity_level": "1..5"
+    },
+    "joins": ["firs.crime_type_id = crime_types.crime_type_id"]
+  },
+  "mo_codes": {
+    "purpose": "Modus-operandi codes (RAG source: mo_description).",
+    "pk": "mo_code_id",
+    "columns": {
+      "mo_code_id": "VARCHAR(15) PK, e.g. 'MO-ROB-004'",
+      "crime_type_id": "-> crime_types",
+      "mo_description": "text (embedded for RAG)",
+      "target_type": "'Residential'|'Commercial'|'Vehicle'|'Person'|'ATM'|'Temple'",
+      "time_pattern": "'Night'|'Early_Morning'|'Business_Hours'|'Evening'|'Variable'"
+    },
+    "joins": ["firs.mo_code_id = mo_codes.mo_code_id"]
+  },
+  "persons": {
+    "purpose": "Master person entity. Entity resolution: prefer er_status='Canonical'; er_cluster_id groups duplicates.",
+    "pk": "person_id",
+    "columns": {
+      "person_id": "UUID PK",
+      "full_name": "text",
+      "aliases": "text[]",
+      "father_name": "text",
+      "is_history_sheeted": "boolean",
+      "is_proclaimed_offender": "boolean",
+      "er_cluster_id": "UUID (canonical cluster)",
+      "er_status": "'Canonical'|'Duplicate'|'Unresolved'",
+      "district_id": "-> districts",
+      "home_locality_id": "-> localities",
+      "geom": "geography(Point,4326) home point"
+    },
+    "joins": ["fir_accused.person_id = persons.person_id", "fir_victims.person_id = persons.person_id", "history_sheets.person_id = persons.person_id"]
+  },
+  "person_addresses": {"purpose": "Person addresses (Current/Permanent/Work/Associate).", "pk": "address_id", "columns": {"person_id": "-> persons", "address_type": "'Current'|'Permanent'|'Work'|'Associate'", "station_id": "-> police_stations", "geom": "geography(Point,4326)"}},
+  "person_phones": {"purpose": "Phone numbers linked to persons (shared-phone links).", "pk": "phone_record_id", "columns": {"person_id": "-> persons", "phone_number": "text", "source_fir_id": "-> firs"}, "joins": ["person_phones.person_id = persons.person_id"]},
+  "firs": {
+    "purpose": "First Information Reports — the central case record.",
+    "pk": "fir_id",
+    "columns": {
+      "fir_id": "VARCHAR(20) PK, format KA-[DIST]-[STN]-[YEAR]-[SERIAL]",
+      "station_id": "-> police_stations",
+      "district_id": "-> districts",
+      "registration_date": "timestamptz",
+      "incident_date": "timestamptz",
+      "incident_location": "text",
+      "crime_type_id": "-> crime_types",
+      "primary_bns_section": "-> bns_sections",
+      "mo_code_id": "-> mo_codes",
+      "complaint_text": "text (RAG-embedded)",
+      "fir_narrative": "text (RAG-embedded)",
+      "complainant_id": "-> persons",
+      "io_officer_id": "-> officers (investigating officer)",
+      "sho_officer_id": "-> officers",
+      "investigation_status": "'Open'|'Under_Investigation'|'Chargesheet_Filed'|'Closed'|'Transferred'",
+      "chargesheet_deadline": "date",
+      "geom": "geography(Point,4326) incident point"
+    },
+    "joins": [
+      "fir_accused.fir_id = firs.fir_id",
+      "fir_victims.fir_id = firs.fir_id",
+      "chargesheets.fir_id = firs.fir_id",
+      "firs.mo_code_id = mo_codes.mo_code_id"
+    ]
+  },
+  "fir_accused": {
+    "purpose": "Accused persons per FIR (co-accusal edges derive from shared fir_id).",
+    "pk": "fir_accused_id",
+    "columns": {
+      "fir_id": "-> firs",
+      "person_id": "-> persons",
+      "role": "'Main_Accused'|'Co_Accused'|'Absconder'|'Unknown'|'Suspect'",
+      "is_arrested": "boolean"
+    },
+    "joins": ["fir_accused.fir_id = firs.fir_id", "fir_accused.person_id = persons.person_id"]
+  },
+  "fir_victims": {"purpose": "Victims per FIR (victim_statement is RAG-embedded).", "pk": "fir_victim_id", "columns": {"fir_id": "-> firs", "person_id": "-> persons", "injury_type": "text", "victim_statement": "text"}},
+  "fir_witnesses": {"purpose": "Witnesses per FIR.", "pk": "fir_witness_id", "columns": {"fir_id": "-> firs", "person_id": "-> persons", "witness_type": "'Eyewitness'|'Panch'|'Expert'|'Character'|'Mahazar'"}},
+  "case_diary_entries": {"purpose": "Investigation diary entries (entry_text RAG-embedded).", "pk": "entry_id", "columns": {"fir_id": "-> firs", "officer_id": "-> officers", "entry_date": "timestamptz", "entry_text": "text", "geom": "geography(Point,4326) for Spot_Visit"}},
+  "arrests": {"purpose": "Arrest records.", "pk": "arrest_id", "columns": {"fir_id": "-> firs", "person_id": "-> persons", "arresting_officer_id": "-> officers", "arrest_date": "timestamptz", "bail_status": "text", "is_absconding": "boolean"}},
+  "chargesheets": {"purpose": "Chargesheets (one per FIR, unique fir_id).", "pk": "chargesheet_id", "columns": {"fir_id": "-> firs UNIQUE", "filing_date": "date", "court_name": "text", "num_accused": "int", "summary_text": "text (RAG-embedded)"}},
+  "court_disposals": {"purpose": "Court outcomes.", "pk": "disposal_id", "columns": {"fir_id": "-> firs", "chargesheet_id": "-> chargesheets", "outcome": "'Convicted'|'Acquitted'|'Compounded'|'Withdrawn'|'Pending'", "disposal_date": "date"}},
+  "ncr_petitions": {
+    "purpose": "Non-cognizable reports / petitions; can escalate to an FIR.",
+    "pk": "petition_id",
+    "columns": {
+      "petition_type": "'NCR'|'Petition'|'CSR'|'Dispute'|'Nuisance'|'Verification'",
+      "station_id": "-> police_stations",
+      "complainant_id": "-> persons",
+      "received_date": "timestamptz",
+      "petition_text": "text (RAG-embedded)",
+      "status": "'Open'|'Closed'|'Escalated_To_FIR'|'Referred'",
+      "escalated_fir_id": "-> firs (set when escalated)"
+    },
+    "joins": ["ncr_petitions.escalated_fir_id = firs.fir_id"]
+  },
+  "history_sheets": {
+    "purpose": "Rowdy/history-sheeter records (one per person, unique person_id).",
+    "pk": "history_sheet_id",
+    "columns": {
+      "person_id": "-> persons UNIQUE",
+      "hs_number": "text",
+      "station_id": "-> police_stations",
+      "opened_date": "date",
+      "category": "'Rowdy'|'Goonda'|'History_Sheeter'|'Bootlegger'|'Gambler'|'Other'",
+      "risk_level": "'Low'|'Medium'|'High'|'Very_High'",
+      "total_cases_count": "int",
+      "conviction_count": "int",
+      "absconding_count": "int"
+    },
+    "joins": ["history_sheets.person_id = persons.person_id"]
+  },
+  "history_sheet_entries": {"purpose": "Timeline entries on a history sheet.", "pk": "hs_entry_id", "columns": {"history_sheet_id": "-> history_sheets", "entry_date": "date", "entry_text": "text (RAG-embedded)", "related_fir_id": "-> firs"}},
+  "gangs": {"purpose": "Organised gangs.", "pk": "gang_id", "columns": {"gang_id": "UUID PK", "gang_name": "text", "primary_crime_type": "-> crime_types", "operating_district": "-> districts", "notes": "text (RAG-embedded)"}},
+  "gang_memberships": {
+    "purpose": "Person<->gang membership edges.",
+    "pk": "membership_id",
+    "columns": {"gang_id": "-> gangs", "person_id": "-> persons", "role_in_gang": "'Leader'|'Sub-Leader'|'Member'|'Associate'|'Informant'|'Financier'", "is_active": "boolean"},
+    "joins": ["gang_memberships.gang_id = gangs.gang_id", "gang_memberships.person_id = persons.person_id"]
+  },
+  "known_associates": {
+    "purpose": "Person<->person association edges. NOTE: person_id_a < person_id_b always (undirected).",
+    "pk": "association_id",
+    "columns": {
+      "person_id_a": "-> persons (smaller UUID)",
+      "person_id_b": "-> persons (larger UUID)",
+      "association_type": "'Co_Accused'|'Family'|'Employer_Employee'|'Neighbour'|'Gang_Member'|'Phone_Contact'|'Financier'|'Known_Receiver'",
+      "first_seen_fir_id": "-> firs",
+      "confidence": "'Confirmed'|'Suspected'"
+    },
+    "joins": ["known_associates.person_id_a = persons.person_id", "known_associates.person_id_b = persons.person_id"]
+  },
+  "vehicles": {
+    "purpose": "Vehicles; theft/recovery status.",
+    "pk": "vehicle_id",
+    "columns": {
+      "registration_number": "text UNIQUE, format KA-DD-XX-NNNN",
+      "vehicle_type": "text",
+      "make": "text", "model": "text", "color": "text",
+      "owner_person_id": "-> persons",
+      "is_stolen": "boolean",
+      "stolen_fir_id": "-> firs",
+      "is_recovered": "boolean",
+      "recovery_date": "date"
+    },
+    "joins": ["vehicles.stolen_fir_id = firs.fir_id"]
+  },
+  "stolen_property": {"purpose": "Stolen/recovered property items.", "pk": "property_id", "columns": {"fir_id": "-> firs", "property_type": "text", "description": "text (RAG-embedded)", "estimated_value_inr": "int", "is_recovered": "boolean", "recovery_seizure_id": "-> seizures"}},
+  "missing_persons": {"purpose": "Missing person reports.", "pk": "mp_id", "columns": {"person_id": "-> persons", "reported_fir_id": "-> firs", "station_id": "-> police_stations", "status": "'Missing'|'Traced'|'Matched_UDB'", "physical_description": "text (RAG-embedded)"}},
+  "seizures": {
+    "purpose": "Seizure/mahazar (panchnama) records.",
+    "pk": "seizure_id",
+    "columns": {
+      "fir_id": "-> firs",
+      "mahazar_number": "text",
+      "seizure_type": "'Property'|'Weapon'|'Vehicle'|'Document'|'Narcotics'|'Cash'|'Other'",
+      "seizure_date": "timestamptz",
+      "items_description": "text (RAG-embedded)",
+      "linked_property_id": "-> stolen_property",
+      "linked_vehicle_id": "-> vehicles",
+      "muddemal_number": "text",
+      "geom": "geography(Point,4326) recovery point"
+    },
+    "joins": ["seizures.fir_id = firs.fir_id", "seizures.linked_vehicle_id = vehicles.vehicle_id"]
+  },
+  "district_socioeconomic": {"purpose": "Per-district socio-economic figures by year.", "pk": "record_id", "columns": {"district_id": "-> districts", "data_year": "int", "population": "int", "literacy_rate": "numeric", "data_source": "text (cite this)"}},
+  "events_calendar": {
+    "purpose": "Events (festivals/processions) with optional route line; bandobast planning.",
+    "pk": "event_id",
+    "columns": {
+      "event_name": "text",
+      "event_type": "text",
+      "district_id": "-> districts",
+      "station_id": "-> police_stations",
+      "event_date_start": "timestamptz",
+      "event_date_end": "timestamptz",
+      "expected_footfall": "int",
+      "route_geom": "geography(LineString,4326) procession route",
+      "geom": "geography(Point,4326) venue"
+    }
+  },
+  "document_chunks": {
+    "purpose": "Semantic index for narrative RAG. Query via match_document_chunks (do NOT run_sql over embeddings).",
+    "pk": "chunk_id",
+    "columns": {
+      "source_table": "originating table name",
+      "source_id": "originating row id (fir_id for FIR fields)",
+      "source_field": "e.g. 'complaint_text','fir_narrative','victim_statement'",
+      "chunk_text": "text",
+      "embedding": "vector(768) multilingual-e5-base",
+      "district_id": "denormalized for scoped retrieval",
+      "station_id": "denormalized"
+    }
+  },
+  "query_audit_log": {
+    "purpose": "AUDIT SCOPE ONLY. Per-turn audit rows (admin desk).",
+    "pk": "log_id",
+    "columns": {
+      "officer_id": "-> officers",
+      "session_id": "text",
+      "query_timestamp": "timestamptz",
+      "query_text": "text",
+      "query_type": "'lookup'|'case_detail'|'pattern'|'network'|'geo_analytics'|'trend'|'summary'|'audit'",
+      "records_accessed": "text[]",
+      "components_used": "text[]",
+      "is_flagged": "boolean",
+      "response_reason": "'answered'|'not_found'|'low_confidence'|'out_of_scope'|'invalid_reference'",
+      "input_modality": "'text'|'voice'"
+    }
+  },
+  "ask_turn_traces": {
+    "purpose": "AUDIT SCOPE ONLY. Per-turn agent execution traces.",
+    "pk": "trace_id",
+    "columns": {"log_id": "-> query_audit_log", "request_id": "text", "trace": "jsonb", "created_at": "timestamptz"}
+  }
+}

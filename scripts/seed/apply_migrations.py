@@ -24,7 +24,8 @@ from db import connect, run_migration_file
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "db" / "migrations"
 
-EXPECTED_TABLE_COUNT = 35
+# 35 base tables (002-004) + ask_turn_traces (009).
+EXPECTED_TABLE_COUNT = 36
 
 
 def apply_all(*, from_prefix: str | None = None) -> None:

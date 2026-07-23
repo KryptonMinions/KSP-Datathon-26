@@ -23,6 +23,65 @@ def _synthetic_email(username: str, settings: Settings) -> str:
     return f"{username}@{settings.synthetic_email_domain}"
 
 
+def _secret_headers(settings: Settings) -> dict[str, str]:
+    return {
+        "apikey": settings.supabase_secret_key,
+        "Authorization": f"Bearer {settings.supabase_secret_key}",
+        "Content-Type": "application/json",
+    }
+
+
+async def call_rpc(fn_name: str, params: dict, settings: Settings) -> object:
+    """Invoke a Postgres RPC via PostgREST with the secret (service_role) key.
+
+    The single DB-access seam for the agent tool layer (ORCHESTRATOR_STEERING
+    O-3: httpx -> PostgREST/RPC only, no direct Postgres driver in the app
+    tier). Returns the parsed JSON body. Raises SupabaseError on non-2xx.
+    """
+    async with httpx.AsyncClient(base_url=settings.supabase_url, timeout=30) as client:
+        resp = await client.post(
+            f"/rest/v1/rpc/{fn_name}",
+            json=params,
+            headers=_secret_headers(settings),
+        )
+    if resp.status_code not in (200, 201, 204):
+        raise SupabaseError(f"rpc {fn_name} failed: {resp.status_code} {resp.text}")
+    if resp.status_code == 204 or not resp.text:
+        return None
+    return resp.json()
+
+
+async def insert_row(table: str, row: dict, settings: Settings) -> list[dict]:
+    """Secret-key PostgREST INSERT (RLS-bypassing), returns the inserted row(s)."""
+    async with httpx.AsyncClient(base_url=settings.supabase_url, timeout=30) as client:
+        resp = await client.post(
+            f"/rest/v1/{table}",
+            json=row,
+            headers={**_secret_headers(settings), "Prefer": "return=representation"},
+        )
+    if resp.status_code not in (200, 201):
+        raise SupabaseError(f"insert {table} failed: {resp.status_code} {resp.text}")
+    return resp.json()
+
+
+async def select_rows(
+    table: str, params: dict[str, str], settings: Settings
+) -> list[dict]:
+    """Secret-key PostgREST SELECT (RLS-bypassing) for fixed, non-model-authored
+    reads (e.g. resolve_entity wrappers, officer lookups). `params` is a
+    PostgREST query string dict, e.g. {"officer_id": "eq.KSP-23417",
+    "select": "station_id"}."""
+    async with httpx.AsyncClient(base_url=settings.supabase_url, timeout=30) as client:
+        resp = await client.get(
+            f"/rest/v1/{table}",
+            params=params,
+            headers=_secret_headers(settings),
+        )
+    if resp.status_code != 200:
+        raise SupabaseError(f"select {table} failed: {resp.status_code} {resp.text}")
+    return resp.json()
+
+
 async def lookup_synthetic_email(username: str, settings: Settings) -> str | None:
     """Look up the synthetic email for a username via the provisioning record.
 

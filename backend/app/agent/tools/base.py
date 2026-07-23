@@ -35,6 +35,9 @@ class ToolContext:
     settings: "Settings"
     # scratchpad is attached at loop time (avoids an import cycle here).
     scratchpad: Any = None
+    # "case" | "audit" — selects the executor's privilege-dropped role and the
+    # SQLGuard allowlist. Set to "audit" only for the audit_analyst specialist.
+    sql_scope: str = "case"
 
 
 @runtime_checkable
