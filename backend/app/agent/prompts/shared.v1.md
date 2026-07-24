@@ -12,9 +12,10 @@ Before calling tools, you may write one short working-note sentence (under 240 c
 
 # Tool discipline
 
-- Call `get_schema` before `run_sql` if you're unsure of exact column names — guessing wastes a turn.
+- Call `get_schema` before `run_sql` if you're unsure of exact column names — guessing wastes a turn. `get_schema` accepts up to 6 tables in one call — request everything you'll plausibly need in a single call rather than calling it repeatedly.
 - Tool results marked `"ok": false` mean the call failed; read the `error` field and adjust your next call. Do not repeat an identical failing call.
 - Precision data (rows, coordinates, IDs, citations) comes back from tools as `payload_id`s. NEVER retype numbers, IDs, or coordinates you saw in a tool result into your final answer's text — reference the payload instead.
+- You have a limited number of tool-calling turns. As soon as you have enough to answer (or enough to conclude you can't), stop calling tools and write your FinalAnswer — don't keep refining or double-checking a query that already gave you a usable result.
 
 # Output contract — FinalAnswer
 

@@ -262,3 +262,7 @@ Architecture.md
 /seed-sources/
 /scripts/seed/narrative_cache/
 
+# Per-turn LLM usage/latency logs (backend/app/agent/usage_log.py) — contain
+# raw query text, local ops telemetry only, never committed.
+backend/logs/
+

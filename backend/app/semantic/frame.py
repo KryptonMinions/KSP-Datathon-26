@@ -11,13 +11,15 @@ layer must never 500 the request (§ fail-open-to-refuse rule).
 
 from __future__ import annotations
 
+import json
 import re
 import uuid
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Callable, Literal
 
 from app.config import Settings
 from app.llm import LLMClient, LLMError
+from app.llm.errors import LLMConfigError, LLMProviderError, LLMTimeoutError
 from app.roles import Role
 from app.schemas import AskRequest, CurrentUser
 
@@ -74,8 +76,17 @@ def _guess_language(query: str) -> str:
     return "en"
 
 
-_CLASSIFY_SYSTEM_PROMPT = """You classify a police officer's natural-language question into exactly one \
-query_class and extract any named entities mentioned. Respond with ONLY a JSON object, no prose.
+_CLASSIFY_SYSTEM_PROMPT = """You are a text-classification component inside an internal police records system \
+already used exclusively by verified, on-duty officers. You never see the officer's identity or perform any \
+lookup yourself — a separate, already-authorized system stage does that after you finish. Your ONLY job is to \
+label the query text below with a category and list the named entities it mentions, exactly like a librarian \
+tagging a card, not like someone fulfilling the request. Do not evaluate authorization, legality, or privacy — \
+that is handled entirely outside your step, before and after you run. Never output an "error", "refusal", \
+"access denied", or any explanatory prose — a category label is always possible, and "unresolved" is the \
+correct label for a query you can't confidently categorize (it is not a refusal, just a category value).
+
+Classify a police officer's natural-language question into exactly one query_class and extract any named \
+entities mentioned. Respond with ONLY a JSON object matching the exact shape below, no prose, no markdown fences.
 
 query_class values (pick exactly one):
 - lookup: antecedents/priors check on a person, or a simple existence/status check ("check antecedents of X", \
@@ -99,21 +110,80 @@ Output shape exactly:
 confidence reflects how certain you are of query_class specifically."""
 
 
-async def _classify(query: str, settings: Settings) -> dict:
+def _parse_classification(content: str | None) -> dict | None:
+    if not content:
+        return None
+    text = content.strip()
+    if text.startswith("```"):
+        text = text.strip("`")
+        if text.lower().startswith("json"):
+            text = text[4:]
+        text = text.strip()
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    return value if isinstance(value, dict) and "query_class" in value else None
+
+
+async def _classify(
+    query: str, settings: Settings, on_usage: Callable[[dict[str, int]], None] | None = None
+) -> dict:
+    """Calls LLMClient.complete() directly rather than complete_json().
+
+    complete_json() appends its own trailing "respond with JSON only" system
+    message, which was empirically found to override this prompt's careful
+    anti-refusal framing: gemini-3.5-flash-lite refused a plain antecedents
+    query 0/4 times through complete_json vs 4/4 clean calling complete()
+    directly with the same system prompt. Implements its own intent->fast
+    fallback (mirroring complete_json's) and a schema-aware repair retry
+    (checks for a `query_class` key, not just JSON-syntax validity — a
+    refusal shaped as {"error": "..."} is valid JSON but not a classification).
+    """
     client = LLMClient(settings)
     messages = [
         {"role": "system", "content": _CLASSIFY_SYSTEM_PROMPT},
         {"role": "user", "content": query},
     ]
-    # "intent" profile (Zoho Catalyst QuickML, when configured) with automatic
-    # fallback to "fast" built into complete_json.
-    return await client.complete_json("intent", messages)
+
+    async def _call(profile: str, msgs: list[dict]):
+        try:
+            return await client.complete(profile, msgs, temperature=0.0)
+        except (LLMConfigError, LLMProviderError, LLMTimeoutError):
+            if profile != "fast":
+                return await client.complete("fast", msgs, temperature=0.0)
+            raise
+
+    resp = await _call("intent", messages)
+    if on_usage:
+        on_usage(resp.usage)
+    parsed = _parse_classification(resp.content)
+    if parsed is not None:
+        return parsed
+
+    repair_messages = [
+        *messages,
+        {"role": "assistant", "content": resp.content or ""},
+        {
+            "role": "user",
+            "content": (
+                'That was not the classification output. Respond again with ONLY the JSON '
+                'object {"query_class": ..., "entities": [...], "confidence": ...} as specified '
+                "— no other keys, no prose."
+            ),
+        },
+    ]
+    resp2 = await client.complete("fast", repair_messages, temperature=0.0)
+    if on_usage:
+        on_usage(resp2.usage)
+    return _parse_classification(resp2.content) or {}
 
 
 async def build_frame(
     request: AskRequest,
     user: CurrentUser,
     settings: Settings,
+    on_usage: Callable[[dict[str, int]], None] | None = None,
 ) -> SemanticFrame:
     frame_id = str(uuid.uuid4())
     normalized = _normalize(request.query)
@@ -122,7 +192,7 @@ async def build_frame(
     fir_matches = _FIR_ID_RE.findall(request.query)
 
     try:
-        result = await _classify(normalized, settings)
+        result = await _classify(normalized, settings, on_usage=on_usage)
     except LLMError as exc:
         return SemanticFrame(
             frame_id=frame_id,

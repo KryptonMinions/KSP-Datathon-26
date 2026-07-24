@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from time import monotonic
+from typing import Any
 
 from app.config import Settings
 from app.llm import LLMClient, LLMError
@@ -52,11 +53,13 @@ class AgentLoop:
         thread_id: str,
         sql_scope: str,
         jurisdiction_note: str | None = None,
+        scoped_station_id: str | None = None,
     ) -> LoopResult:
         tool_by_name = {t.name: t for t in tools}
         tool_specs = [to_openai_spec(t) for t in tools]
         ctx = ToolContext(
-            user=user, frame=frame, settings=self._settings, scratchpad=scratchpad, sql_scope=sql_scope
+            user=user, frame=frame, settings=self._settings, scratchpad=scratchpad,
+            sql_scope=sql_scope, scoped_station_id=scoped_station_id,
         )
 
         messages = await self._build_messages(specialist, frame, user, thread_id, jurisdiction_note)
@@ -85,7 +88,7 @@ class AgentLoop:
                     scratchpad.emit_event({"type": "thought", "text": thought[:240]})
 
             if not response.tool_calls:
-                final = await self._parse_with_repair(response.content, messages, specialist)
+                final = await self._parse_with_repair(response.content, messages, specialist, scratchpad)
                 if final is not None:
                     return LoopResult(final_answer=final)
                 return self._abort(scratchpad, specialist, "final_answer_unparseable")
@@ -94,7 +97,7 @@ class AgentLoop:
             messages.append(_assistant_tool_call_message(response, call_ids))
 
             for call, call_id in zip(response.tool_calls, call_ids):
-                scratchpad.emit_event({"type": "tool_started", "tool": call.name})
+                scratchpad.emit_event({"type": "tool_started", "tool": call.name, "args": call.arguments})
                 tool = tool_by_name.get(call.name)
                 if tool is None:
                     result_payload: dict = {"ok": False, "error": f"unknown tool '{call.name}'"}
@@ -103,6 +106,14 @@ class AgentLoop:
                         result = await asyncio.wait_for(
                             tool.run(call.arguments, ctx), timeout=self._settings.ask_tool_timeout_s
                         )
+                        if result.hard_refuse_reason:
+                            scratchpad.emit_event({
+                                "type": "hard_refuse", "tool": call.name, "reason": result.hard_refuse_reason,
+                            })
+                            return LoopResult(
+                                final_answer=FinalAnswer(status="no_answer", reason=result.hard_refuse_reason),
+                                abort_reason=f"hard_refuse:{call.name}",
+                            )
                         result_payload = {"ok": result.ok, "data": result.data, "error": result.error}
                         if result.payload_id:
                             result_payload["payload_id"] = result.payload_id
@@ -112,7 +123,11 @@ class AgentLoop:
                         result_payload = {"ok": False, "error": f"tool '{call.name}' raised: {exc}"}
 
                 scratchpad.record_tool_use(call.name)
-                scratchpad.emit_event({"type": "tool_finished", "tool": call.name, "ok": result_payload["ok"]})
+                summary = json.dumps(result_payload, default=str)
+                scratchpad.emit_event({
+                    "type": "tool_finished", "tool": call.name, "ok": result_payload["ok"],
+                    "result_summary": summary[:2000],
+                })
 
                 if result_payload["ok"]:
                     consecutive_failures[call.name] = 0
@@ -126,15 +141,20 @@ class AgentLoop:
         return self._abort(scratchpad, specialist, "max_iterations_exceeded")
 
     async def _parse_with_repair(
-        self, content: str | None, messages: list[dict], specialist: SpecialistConfig
+        self, content: str | None, messages: list[dict], specialist: SpecialistConfig, scratchpad: TurnScratchpad
     ) -> FinalAnswer | None:
+        first_error: str | None = None
         if content:
             data = _try_json(content)
             if data is not None:
                 try:
                     return parse_final_answer(data)
-                except FinalAnswerParseError:
-                    pass
+                except FinalAnswerParseError as exc:
+                    first_error = str(exc)
+            else:
+                first_error = "not valid JSON"
+        else:
+            first_error = "empty content"
 
         repair_messages = [
             *messages,
@@ -152,7 +172,13 @@ class AgentLoop:
         try:
             data = await self._llm.complete_json(specialist.profile, repair_messages)
             return parse_final_answer(data)
-        except (LLMError, FinalAnswerParseError):
+        except (LLMError, FinalAnswerParseError) as exc:
+            scratchpad.emit_event({
+                "type": "final_answer_parse_failed",
+                "first_attempt_error": first_error,
+                "first_attempt_content": (content or "")[:1000],
+                "repair_error": str(exc),
+            })
             return None
 
     def _abort(self, scratchpad: TurnScratchpad, specialist: SpecialistConfig, reason: str) -> LoopResult:
@@ -209,17 +235,23 @@ class AgentLoop:
 
 
 def _assistant_tool_call_message(response, call_ids: list[str]) -> dict:
+    def _tool_call_dict(tc, call_id: str) -> dict:
+        d: dict[str, Any] = {
+            "id": call_id,
+            "type": "function",
+            "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)},
+        }
+        # Provider-specific metadata that MUST round-trip verbatim (e.g.
+        # Gemini 3.x's thought_signature) — a missing signature 400s the next
+        # request. Verified live: 0/1 without this, working after adding it.
+        if tc.extra_content:
+            d["extra_content"] = tc.extra_content
+        return d
+
     return {
         "role": "assistant",
         "content": response.content,
-        "tool_calls": [
-            {
-                "id": call_id,
-                "type": "function",
-                "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)},
-            }
-            for tc, call_id in zip(response.tool_calls, call_ids)
-        ],
+        "tool_calls": [_tool_call_dict(tc, call_id) for tc, call_id in zip(response.tool_calls, call_ids)],
     }
 
 

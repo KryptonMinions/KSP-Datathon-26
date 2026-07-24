@@ -1,10 +1,9 @@
 """SpecialistConfig registry (ORCHESTRATOR_STEERING.md §4).
 
-Tool lists here reflect what's actually built so far (P1: run_sql/get_schema;
-P2: resolve_entity/get_case). search_narratives (RAG) and the P3 analytical
-tools (mo_match, build_network, geo_query, trend_series) are added to these
-lists when they land — allowed_blocks are declared per the full spec now so no
-redesign is needed later; a block type simply goes unused until its tool ships.
+search_narratives (RAG) is still deferred (waiting on the embeddings service).
+Everything else in the full spec's tool table is now built: run_sql/get_schema
+(P1), resolve_entity/get_case (P2), mo_match/build_network/geo_query/
+trend_series (P3).
 """
 
 from __future__ import annotations
@@ -12,8 +11,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from .tools.analysis import MoMatchTool, TrendSeriesTool
 from .tools.base import Tool
 from .tools.entities import GetCaseTool, ResolveEntityTool
+from .tools.geo import GeoQueryTool
+from .tools.network import BuildNetworkTool
 from .tools.sql import GetSchemaTool, RunSqlTool
 
 BlockType = Literal[
@@ -37,12 +39,16 @@ _run_sql = RunSqlTool()
 _get_schema = GetSchemaTool()
 _resolve_entity = ResolveEntityTool()
 _get_case = GetCaseTool()
+_mo_match = MoMatchTool()
+_build_network = BuildNetworkTool()
+_geo_query = GeoQueryTool()
+_trend_series = TrendSeriesTool()
 
 CASE_INVESTIGATOR = SpecialistConfig(
     name="case_investigator",
     profile="fast",
-    max_iterations=6,
-    tools=[_run_sql, _get_schema, _resolve_entity, _get_case],
+    max_iterations=8,
+    tools=[_run_sql, _get_schema, _resolve_entity, _get_case, _mo_match],
     allowed_blocks=frozenset({"text", "table", "case_card", "mo_match", "no_answer"}),
     prompt_file="case_investigator.v1.md",
 )
@@ -51,7 +57,7 @@ INTEL_ANALYST = SpecialistConfig(
     name="intel_analyst",
     profile="fast",
     max_iterations=8,
-    tools=[_run_sql, _get_schema, _resolve_entity],
+    tools=[_run_sql, _get_schema, _resolve_entity, _build_network, _geo_query, _trend_series],
     allowed_blocks=frozenset({"text", "table", "network_graph", "map", "no_answer"}),
     prompt_file="intel_analyst.v1.md",
 )
@@ -60,7 +66,10 @@ REPORT_COMPOSER = SpecialistConfig(
     name="report_composer",
     profile="smart",
     max_iterations=10,
-    tools=[_run_sql, _get_schema, _resolve_entity, _get_case],
+    tools=[
+        _run_sql, _get_schema, _resolve_entity, _get_case, _mo_match,
+        _build_network, _geo_query, _trend_series,
+    ],
     allowed_blocks=frozenset({
         "text", "table", "case_card", "mo_match", "network_graph", "map", "pack_report", "no_answer",
     }),
@@ -88,7 +97,7 @@ REGISTRY: dict[str, SpecialistConfig] = {
 def intel_analyst_scoped_tools() -> list[Tool]:
     """§4.1 rule 4: on station-scoped IO turns, intel_analyst runs WITHOUT
     run_sql/get_schema — closes the raw-SQL bypass around the scope
-    injections. Only resolve_entity remains until P3 adds
-    build_network/geo_query/trend_series (the tools that actually cover
-    the three scoped classes per spec)."""
-    return [_resolve_entity]
+    injections. build_network/geo_query/trend_series remain (they fully
+    cover the three scoped classes per spec, and each enforces its own
+    injection/admission check via ctx.scoped_station_id)."""
+    return [_resolve_entity, _build_network, _geo_query, _trend_series]

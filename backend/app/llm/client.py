@@ -14,7 +14,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 import httpx
 
@@ -41,6 +41,12 @@ class ToolCall:
     id: str
     name: str
     arguments: dict[str, Any]
+    # Provider-specific per-call metadata that MUST be echoed back verbatim in
+    # the reconstructed assistant message on the next turn, or the call fails.
+    # Gemini 3.x: {"google": {"thought_signature": "..."}} — required for
+    # multi-turn tool-calling continuity; a missing signature 400s the next
+    # request. None for providers that don't use this (e.g. Groq/OpenAI).
+    extra_content: dict[str, Any] | None = None
 
 
 @dataclass
@@ -119,7 +125,10 @@ class LLMClient:
             except json.JSONDecodeError:
                 args = {}
             tool_calls.append(
-                ToolCall(id=tc.get("id", ""), name=fn.get("name", ""), arguments=args)
+                ToolCall(
+                    id=tc.get("id", ""), name=fn.get("name", ""), arguments=args,
+                    extra_content=tc.get("extra_content"),
+                )
             )
         usage = raw.get("usage") or {}
         return LLMResponse(
@@ -179,11 +188,17 @@ class LLMClient:
         messages: list[dict[str, Any]],
         *,
         temperature: float = 0.0,
+        on_usage: Callable[[dict[str, int]], None] | None = None,
     ) -> dict[str, Any]:
         """Return a parsed JSON object, with one repair retry on parse failure.
 
         Falls back to the `fast` profile when the requested profile raises a
         config/transport error (used for the optional QuickML `intent` profile).
+
+        `on_usage`, if given, is called with each underlying LLMResponse's
+        usage dict (once per actual API call — initial + repair, if it
+        happens) so callers can accumulate token counts even though this
+        method's return value is just the parsed dict.
         """
         try:
             resp = await self.complete(
@@ -198,6 +213,8 @@ class LLMClient:
                 )
             else:
                 raise
+        if on_usage:
+            on_usage(resp.usage)
 
         parsed = _try_json(resp.content)
         if parsed is not None:
@@ -211,6 +228,8 @@ class LLMClient:
         ]
         resp2 = await self.complete(profile if profile == "fast" else "fast", repair,
                                     temperature=temperature)
+        if on_usage:
+            on_usage(resp2.usage)
         parsed2 = _try_json(resp2.content)
         if parsed2 is None:
             raise LLMOutputError("model did not return valid JSON after repair retry")

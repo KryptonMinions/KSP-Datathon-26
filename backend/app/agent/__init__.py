@@ -31,6 +31,7 @@ from .loop import AgentLoop
 from .scratchpad import TurnScratchpad
 from .specialists import SpecialistConfig, intel_analyst_scoped_tools
 from .threads import TurnSummary, get_thread_store
+from .usage_log import log_turn_usage
 
 _STATION_CACHE_TTL_S = 600
 _station_cache: dict[str, tuple[float, dict | None]] = {}
@@ -90,9 +91,25 @@ async def run_turn(
     *,
     request_id: str,
 ) -> AskResponse:
+    turn_start = time.monotonic()
     thread_id = request.thread_id or str(uuid.uuid4())
-    frame = await build_frame(request, user, settings)
     scratchpad = TurnScratchpad()
+    frame = await build_frame(request, user, settings, on_usage=scratchpad.add_usage)
+
+    def _log_usage(specialist_name: str | None, message: AssistantMessage) -> None:
+        status, reason = "answered", None
+        if message.blocks and message.blocks[0].type == "no_answer":
+            status, reason = "no_answer", message.blocks[0].reason
+        log_turn_usage(
+            request_id=request_id, thread_id=thread_id, role=user.role.value,
+            query_class=frame.query_class, specialist=specialist_name,
+            fast_model=settings.llm_profile_fast_model, smart_model=settings.llm_profile_smart_model,
+            prompt_tokens=scratchpad.usage["prompt_tokens"],
+            completion_tokens=scratchpad.usage["completion_tokens"],
+            total_tokens=scratchpad.usage["total_tokens"],
+            turnaround_ms=int((time.monotonic() - turn_start) * 1000),
+            status=status, reason=reason,
+        )
 
     decision = gate(user.role, frame.query_class)
     if not decision.allow:
@@ -102,11 +119,13 @@ async def run_turn(
             scratchpad=scratchpad, specialist_name=None, request_id=request_id,
             thread_id=thread_id, settings=settings,
         )
+        _log_usage(None, message)
         return _build_response(thread_id, message)
 
     specialist: SpecialistConfig = router.select(frame.query_class)
 
     jurisdiction_note: str | None = None
+    scoped_station_id: str | None = None
     tools = specialist.tools
     if is_scoped(user.role, frame.query_class):
         station = await _resolve_operator_station(user, settings)
@@ -117,7 +136,9 @@ async def run_turn(
                 scratchpad=scratchpad, specialist_name=specialist.name, request_id=request_id,
                 thread_id=thread_id, settings=settings,
             )
+            _log_usage(specialist.name, message)
             return _build_response(thread_id, message)
+        scoped_station_id = station["station_id"]
         jurisdiction_note = (
             f"Your analyses for this turn are limited to cases filed at "
             f"{station['station_name']} (station {station['station_id']})."
@@ -135,6 +156,7 @@ async def run_turn(
         thread_id=thread_id,
         sql_scope=specialist.sql_scope,
         jurisdiction_note=jurisdiction_note,
+        scoped_station_id=scoped_station_id,
     )
 
     message = compose(result.final_answer, scratchpad, specialist)
@@ -159,5 +181,6 @@ async def run_turn(
         scratchpad=scratchpad, specialist_name=specialist.name, request_id=request_id,
         thread_id=thread_id, settings=settings,
     )
+    _log_usage(specialist.name, message)
 
     return _build_response(thread_id, message)
