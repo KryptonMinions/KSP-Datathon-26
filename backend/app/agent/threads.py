@@ -2,19 +2,28 @@
 
 Holds up to ASK_THREAD_TTL_S worth of per-thread turn summaries (query,
 specialist, one-line answer summary, entity IDs — §6.1's '## Conversation
-context' prompt section pulls the last 6). Process-global with a per-thread
-asyncio lock; the memory backend is why the backend must run
-`uvicorn --workers 1` (O-13) until THREAD_STORE_BACKEND=catalyst lands (P4,
-Catalyst Cache — durable, multi-worker safe. Not implemented yet; selecting it
-now raises rather than silently falling back, so a misconfiguration is loud).
+context' prompt section pulls the last 6).
+
+Two backends:
+- `memory` — process-global dict, per-thread asyncio lock. Why the backend
+  must run `uvicorn --workers 1` (O-13): this state doesn't cross processes.
+- `catalyst` — Zoho Catalyst Cache. Durable and multi-worker safe (each worker
+  hits the same remote cache). One cache key per thread_id holding a
+  JSON-serialized list of turns. Verified live against a real segment before
+  being wired in here (insert/retrieve/TTL all confirmed against
+  api.catalyst.zoho.<tld>/baas/v1/project/{id}/segment/{id}/cache).
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import time
-from dataclasses import dataclass, field
-from typing import Protocol
+from dataclasses import asdict, dataclass, field
+from typing import Any, Protocol
+from urllib.parse import urlparse
+
+import httpx
 
 from app.config import Settings
 
@@ -68,17 +77,130 @@ class InMemoryThreadStore:
             return self._threads.get(thread_id, [])[-limit:]
 
 
+# Turns stored per thread, independent of get_recent's requested `limit`
+# (which is the ≤6 prompt-context window) — a wider history is kept so a
+# later turn can still see further back if some future caller asks for more.
+_CATALYST_MAX_STORED_TURNS = 20
+
+
+class CatalystCacheThreadStore:
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+        tld = urlparse(settings.catalyst_oauth_token_url).netloc.rsplit(".", 1)[-1] or "com"
+        self._api_base = f"https://api.catalyst.zoho.{tld}"
+        self._segment_id = settings.catalyst_cache_segment_id
+        self._ttl_hours = max(1, round(settings.ask_thread_ttl_s / 3600))
+        self._locks: dict[str, asyncio.Lock] = {}
+        self._locks_guard = asyncio.Lock()
+        self._token: str | None = None
+        self._token_expires_at: float = 0.0
+        self._token_lock = asyncio.Lock()
+
+    async def _lock_for(self, thread_id: str) -> asyncio.Lock:
+        async with self._locks_guard:
+            lock = self._locks.get(thread_id)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._locks[thread_id] = lock
+            return lock
+
+    async def _access_token(self) -> str:
+        now = time.monotonic()
+        if self._token and now < self._token_expires_at:
+            return self._token
+        async with self._token_lock:
+            now = time.monotonic()
+            if self._token and now < self._token_expires_at:
+                return self._token
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.post(
+                    self._settings.catalyst_oauth_token_url,
+                    data={
+                        "grant_type": "refresh_token",
+                        "client_id": self._settings.catalyst_oauth_client_id,
+                        "client_secret": self._settings.catalyst_oauth_client_secret,
+                        "refresh_token": self._settings.catalyst_oauth_refresh_token,
+                    },
+                )
+                resp.raise_for_status()
+                body = resp.json()
+            self._token = body["access_token"]
+            # Refresh 60s early so a token never expires mid-request.
+            self._token_expires_at = now + body.get("expires_in", 3600) - 60
+            return self._token
+
+    def _cache_url(self) -> str:
+        return (
+            f"{self._api_base}/baas/v1/project/{self._settings.catalyst_project_id}"
+            f"/segment/{self._segment_id}/cache"
+        )
+
+    async def _get_raw(self, thread_id: str) -> list[dict[str, Any]]:
+        token = await self._access_token()
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(
+                self._cache_url(),
+                headers={"Authorization": f"Zoho-oauthtoken {token}"},
+                params={"cacheKey": thread_id},
+            )
+        if resp.status_code == 404:
+            return []
+        resp.raise_for_status()
+        raw_value = (resp.json().get("data") or {}).get("cache_value")
+        if not raw_value:
+            return []
+        try:
+            return json.loads(raw_value)
+        except json.JSONDecodeError:
+            return []
+
+    async def _put_raw(self, thread_id: str, items: list[dict[str, Any]]) -> None:
+        token = await self._access_token()
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(
+                self._cache_url(),
+                headers={"Authorization": f"Zoho-oauthtoken {token}", "Content-Type": "application/json"},
+                json={
+                    "cache_name": thread_id,
+                    "cache_value": json.dumps(items),
+                    "expiry_in_hours": self._ttl_hours,
+                },
+            )
+        resp.raise_for_status()
+
+    async def append(self, thread_id: str, turn: TurnSummary) -> None:
+        lock = await self._lock_for(thread_id)
+        async with lock:
+            try:
+                items = await self._get_raw(thread_id)
+                items.append(asdict(turn))
+                items = items[-_CATALYST_MAX_STORED_TURNS:]
+                await self._put_raw(thread_id, items)
+            except httpx.HTTPError:
+                # Conversation memory is a quality-of-life feature, not
+                # critical path — never fail the user's turn over it.
+                pass
+
+    async def get_recent(self, thread_id: str, limit: int = 6) -> list[TurnSummary]:
+        try:
+            items = await self._get_raw(thread_id)
+        except httpx.HTTPError:
+            return []
+        turns = [TurnSummary(**item) for item in items]
+        return turns[-limit:]
+
+
 _memory_store: InMemoryThreadStore | None = None
+_catalyst_store: CatalystCacheThreadStore | None = None
 
 
 def get_thread_store(settings: Settings) -> ThreadStore:
     """Process-global singleton (O-13) — never construct a store per-request."""
-    global _memory_store
+    global _memory_store, _catalyst_store
     if settings.thread_store_backend == "catalyst":
-        raise NotImplementedError(
-            "THREAD_STORE_BACKEND=catalyst is not implemented yet (lands in P4). "
-            "Set THREAD_STORE_BACKEND=memory for now."
-        )
+        if _catalyst_store is None:
+            _catalyst_store = CatalystCacheThreadStore(settings)
+        return _catalyst_store
     if _memory_store is None:
         _memory_store = InMemoryThreadStore(settings.ask_thread_ttl_s)
     return _memory_store

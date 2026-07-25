@@ -66,6 +66,8 @@ class Settings(BaseSettings):
     catalyst_oauth_client_secret: str = ""
     catalyst_oauth_refresh_token: str = ""
     catalyst_stratus_bucket: str = ""
+    # Cache segment for the thread store (console-created; no API to create one).
+    catalyst_cache_segment_id: str = ""
 
 
 @lru_cache
