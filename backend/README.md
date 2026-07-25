@@ -26,11 +26,27 @@ static-secret check would reject every one of them. See `app/security.py`.
    ```
 5. Run the API:
    ```
-   uvicorn app.main:app --reload
+   uvicorn app.main:app --reload --workers 1
    ```
+   `--workers 1` is required — the agent's thread store (`app/agent/threads.py`)
+   is in-process, not multi-worker safe (`ORCHESTRATOR_STEERING.md` O-13).
+
+   If `uvicorn` fails with a "bad interpreter" error, the committed `.venv`'s
+   console scripts may have a stale shebang from an earlier repo location; use
+   `python -m uvicorn app.main:app --reload --workers 1` instead, or rebuild
+   the venv.
+
+## `ASK_ENGINE`
+
+`backend/.env`'s `ASK_ENGINE` selects the `/ask` implementation:
+- `fixture` (default) — canned demo responses, no LLM/DB calls.
+- `agent` — the real orchestrator (`app/agent/`): semantic classification →
+  gating → specialist routing → tool-calling loop → live Supabase data. Needs
+  working `LLM_PROFILE_FAST_*`/`LLM_PROFILE_SMART_*` credentials.
 
 ## Endpoints
 
 - `POST /auth/login` — `{username, password}` → Supabase session/JWT.
 - `GET /auth/me` — verifies the bearer JWT, returns `{id, role}` from
   `app_metadata.role`. For frontend redirect checks, not authorization.
+- `POST /ask` — see `ASK_ENGINE` above; behavior depends on that setting.
