@@ -265,5 +265,5 @@ Architecture.md
 # Per-turn LLM usage/latency logs (backend/app/agent/usage_log.py) — contain
 # raw query text, local ops telemetry only, never committed.
 backend/logs/
-
+backend/app-config.json
 E2E_TESTING_GAPS.md

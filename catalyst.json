@@ -4,5 +4,8 @@
       "source": "docker://ksp-backend:latest",
       "name": "ksp-backend"
     }
-  ]
+  ],
+  "client": {
+    "source": "frontend/out"
+  }
 }
