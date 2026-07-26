@@ -20,6 +20,7 @@ from .scratchpad import TurnScratchpad
 from .specialists import SpecialistConfig
 from .threads import get_thread_store
 from .tools.base import Tool, ToolContext, to_openai_spec
+from .tools.sql import AUDIT_TABLES, CASE_TABLES, load_schema_card
 
 _PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 _MAX_TOOL_RESULT_BYTES = 8 * 1024
@@ -35,6 +36,19 @@ class LoopResult:
 @lru_cache(maxsize=None)
 def _load_prompt(filename: str) -> str:
     return (_PROMPTS_DIR / filename).read_text()
+
+
+@lru_cache(maxsize=None)
+def _available_data_section(sql_scope: str) -> str:
+    """Compact table list (name + one-line purpose) from schema_card.json,
+    scoped to what this specialist can actually query (§6.1 — this was in the
+    original spec but never implemented; the model had zero upfront table
+    visibility and was guessing wrong table names, e.g. "events"/"bandobast"
+    instead of the real events_calendar, confirmed via a live trace)."""
+    card = load_schema_card()
+    allow = AUDIT_TABLES if sql_scope == "audit" else CASE_TABLES
+    lines = [f"- `{name}` — {card[name]['purpose']}" for name in sorted(allow) if name in card]
+    return "\n".join(lines) + "\nCall get_schema for exact column names before writing SQL against any of these."
 
 
 class AgentLoop:
@@ -208,6 +222,8 @@ class AgentLoop:
 
         ref_date = self._settings.ask_reference_date or "server date (not pinned)"
         sections.append(f"## Reference date\n{ref_date}")
+
+        sections.append(f"## Available data\n{_available_data_section(specialist.sql_scope)}")
 
         if jurisdiction_note:
             sections.append(f"## Jurisdiction scope\n{jurisdiction_note}")

@@ -75,6 +75,14 @@ class TurnScratchpad:
             self.records_accessed.add(fir_id)
         return key
 
+    def record_accessed(self, record_id: str) -> None:
+        """Directly note a record as accessed this turn, for tools whose
+        results aren't registered as a payload/citation (e.g. resolve_entity
+        candidate person_ids — needed for the Bulk_Lookup audit flag rule,
+        §12) but still count toward the audit trail's records_accessed."""
+        if record_id:
+            self.records_accessed.add(record_id)
+
     def citations_for(self, keys: list[str]) -> list[Citation]:
         """Materialize Citation objects for known keys; unknown keys are
         dropped silently (composer.py §7 rule)."""

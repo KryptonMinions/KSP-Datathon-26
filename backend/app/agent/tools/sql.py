@@ -151,6 +151,13 @@ class RunSqlTool:
 
     async def run(self, args: dict[str, Any], ctx: ToolContext) -> ToolResult:
         sql = (args.get("sql") or "").strip()
+        # execute_agent_select wraps the query as a subquery — SELECT ... FROM
+        # (<p_sql>) t — so a trailing semicolon (a common, harmless model
+        # habit) breaks the wrapper with a raw syntax error even though the
+        # query itself is perfectly valid. Strip it defensively rather than
+        # burn an iteration on every query that happens to end in ';'
+        # (confirmed live: this alone caused a tool_repeated_failure abort).
+        sql = sql.rstrip().rstrip(";").rstrip()
         scope = ctx.sql_scope
         if not sql:
             return ToolResult(ok=False, error="no SQL provided")

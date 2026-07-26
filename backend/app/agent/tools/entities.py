@@ -48,6 +48,11 @@ class ResolveEntityTool:
                     "resolve_person_candidates", {"q": text, "limit_n": 5}, ctx.settings
                 )
                 candidates = _dedupe_person_clusters(rows or [])
+                if ctx.scratchpad is not None:
+                    for c in candidates:
+                        pid = c.get("person_id")
+                        if pid:
+                            ctx.scratchpad.record_accessed(pid)
             elif kind == "vehicle":
                 rows = await call_rpc(
                     "resolve_vehicle_candidates", {"plate": text, "limit_n": 5}, ctx.settings

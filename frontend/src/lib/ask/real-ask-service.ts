@@ -145,7 +145,7 @@ function wireToBlock(block: WireBlock): ContentBlock {
         citations,
       };
     case "no_answer":
-      return { id: block.id, type: "no_answer", message: block.message, citations };
+      return { id: block.id, type: "no_answer", message: block.message, reason: block.reason ?? undefined, citations };
     case "pack_report":
       return {
         id: block.id,

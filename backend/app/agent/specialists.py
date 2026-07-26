@@ -3,7 +3,8 @@
 search_narratives (RAG) is still deferred (waiting on the embeddings service).
 Everything else in the full spec's tool table is now built: run_sql/get_schema
 (P1), resolve_entity/get_case (P2), mo_match/build_network/geo_query/
-trend_series (P3).
+trend_series (P3), build_pack_report (post-P6, closing the pack_report gap
+found in the demo pass — see E2E_TESTING_GAPS.md §2/§5b/§6).
 """
 
 from __future__ import annotations
@@ -16,6 +17,7 @@ from .tools.base import Tool
 from .tools.entities import GetCaseTool, ResolveEntityTool
 from .tools.geo import GeoQueryTool
 from .tools.network import BuildNetworkTool
+from .tools.reports import BuildPackReportTool
 from .tools.sql import GetSchemaTool, RunSqlTool
 
 BlockType = Literal[
@@ -43,6 +45,7 @@ _mo_match = MoMatchTool()
 _build_network = BuildNetworkTool()
 _geo_query = GeoQueryTool()
 _trend_series = TrendSeriesTool()
+_build_pack_report = BuildPackReportTool()
 
 CASE_INVESTIGATOR = SpecialistConfig(
     name="case_investigator",
@@ -68,7 +71,7 @@ REPORT_COMPOSER = SpecialistConfig(
     max_iterations=10,
     tools=[
         _run_sql, _get_schema, _resolve_entity, _get_case, _mo_match,
-        _build_network, _geo_query, _trend_series,
+        _build_network, _geo_query, _trend_series, _build_pack_report,
     ],
     allowed_blocks=frozenset({
         "text", "table", "case_card", "mo_match", "network_graph", "map", "pack_report", "no_answer",

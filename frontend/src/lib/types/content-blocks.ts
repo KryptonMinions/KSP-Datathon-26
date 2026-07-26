@@ -88,9 +88,14 @@ export interface CaseCardBlock extends BaseBlock {
   historySheet?: HistorySheetSummary;
 }
 
+export type NoAnswerReason = "not_found" | "low_confidence" | "out_of_scope" | "invalid_reference";
+
 export interface NoAnswerBlock extends BaseBlock {
   type: "no_answer";
   message: string;
+  /** Optional for backward compat with existing fixtures; unknown/absent
+   * values render as the generic calm block (steering-docs §13.2). */
+  reason?: NoAnswerReason;
 }
 
 export interface TrendMetric {
