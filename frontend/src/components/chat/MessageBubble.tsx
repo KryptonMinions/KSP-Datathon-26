@@ -1,6 +1,7 @@
 import type { ChatMessage } from "@/lib/types/content-blocks";
 import { cn } from "@/lib/utils";
 import { BlockRenderer } from "./BlockRenderer";
+import { ThinkingPanel } from "./ThinkingPanel";
 
 export function MessageBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
@@ -18,6 +19,9 @@ export function MessageBubble({ message }: { message: ChatMessage }) {
         {isUser && message.text && <p>{message.text}</p>}
         {!isUser && (
           <div className="space-y-3">
+            {message.thinking && message.thinking.length > 0 && (
+              <ThinkingPanel thinking={message.thinking} isStreaming={message.isStreaming} />
+            )}
             {message.text && <p className="text-sm">{message.text}</p>}
             {message.blocks?.map((block) => (
               <BlockRenderer key={block.id} block={block} />

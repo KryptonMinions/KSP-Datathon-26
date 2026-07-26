@@ -158,6 +158,28 @@ export type ContentBlock =
   | PackReportBlock
   | MapBlock;
 
+/** One entry in the live "thinking" activity trace streamed over
+ * `/ask/stream` (ASK_STREAM_ENDPOINT_CONTRACT.md §2.2) — the agent's own
+ * tool-use trail (working notes + tool-call lifecycle), not raw model
+ * chain-of-thought. `tool_started`/`tool_finished` are separate events for
+ * the same call, correlated by `tool` + arrival order, not by `label`. */
+export interface ThinkingEvent {
+  id: string;
+  kind:
+    | "thought"
+    | "tool_started"
+    | "tool_finished"
+    | "hard_refuse"
+    | "llm_error"
+    | "abort"
+    | "final_answer_parse_failed";
+  label: string;
+  detail?: string;
+  status: "in_progress" | "done" | "error";
+  ts: string;
+  tool?: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -169,4 +191,11 @@ export interface ChatMessage {
    * later turns land in the same thread. Undefined for user messages and
    * for MockAskService responses (no server-side thread concept). */
   threadId?: string;
+  /** Live activity trace while this message is streaming, and its collapsed
+   * history afterward. Undefined for user messages, MockAskService
+   * responses, and any answer served by the non-streaming `/ask` path. */
+  thinking?: ThinkingEvent[];
+  /** True from the moment a placeholder assistant message is appended until
+   * its terminal `message`/`error` SSE event arrives (ChatThread.tsx). */
+  isStreaming?: boolean;
 }

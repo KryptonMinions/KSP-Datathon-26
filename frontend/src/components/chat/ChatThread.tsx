@@ -2,15 +2,24 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Download, Loader2 } from "lucide-react";
-import type { ChatMessage } from "@/lib/types/content-blocks";
+import type { ChatMessage, ThinkingEvent } from "@/lib/types/content-blocks";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useAsk } from "@/lib/ask/use-ask";
+import { useAskStream } from "@/lib/ask/use-ask-stream";
+import { askService } from "@/lib/ask/index";
+import { RealAskService } from "@/lib/ask/real-ask-service";
 import { exportSessionPdf } from "@/lib/export/export-pdf";
 import { Button } from "@/components/ui/button";
 import { MessageBubble } from "./MessageBubble";
 import { QueryInput, type SendMeta } from "./QueryInput";
 import { LoadingState } from "@/components/shared/LoadingState";
 import { ErrorState } from "@/components/shared/ErrorState";
+
+// Resolved once at module load, mirroring the mock/real toggle in
+// lib/ask/index.ts -- MockAskService (offline dev, NEXT_PUBLIC_ASK_SERVICE=
+// mock) never supports streaming, so this stays a binary check rather than
+// a separate capability-flag abstraction (ASK_STREAM_ENDPOINT_CONTRACT.md §3).
+const supportsStreaming = askService instanceof RealAskService;
 
 interface ChatThreadProps {
   /** Larger touch targets for the IO MobileShell (steering-docs §9). */
@@ -28,10 +37,21 @@ export function ChatThread({ inputSize = "default", emptyState }: ChatThreadProp
   // is stateless between calls.
   const [threadId, setThreadId] = useState<string | null>(null);
   const [turnIndex, setTurnIndex] = useState(0);
-  const { mutateAsync, isPending, isError, error } = useAsk();
+  const { mutateAsync, isPending: isMutationPending, isError: isMutationError, error: mutationError } = useAsk();
+  const { send: sendStream, isStreaming } = useAskStream();
+  // True from send-start until the first thinking/message/error event lands
+  // -- keeps the generic skeleton up for just the pre-first-byte gap, then
+  // the placeholder assistant message's own ThinkingPanel takes over.
+  const [isAwaitingFirstEvent, setIsAwaitingFirstEvent] = useState(false);
+  const [streamError, setStreamError] = useState<Error | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
+
+  const isPending = supportsStreaming ? isStreaming : isMutationPending;
+  const isError = supportsStreaming ? streamError !== null : isMutationError;
+  const error = supportsStreaming ? streamError : mutationError;
+  const showLoadingSkeleton = supportsStreaming ? isPending && isAwaitingFirstEvent : isPending;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -49,7 +69,71 @@ export function ChatThread({ inputSize = "default", emptyState }: ChatThreadProp
     }
   };
 
-  const handleSend = async (query: string, meta: SendMeta) => {
+  const handleSendStreaming = async (query: string, meta: SendMeta) => {
+    const userMessage: ChatMessage = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      timestamp: new Date().toISOString(),
+      text: query,
+    };
+    const placeholderId = `assistant-${Date.now()}`;
+    setMessages((prev) => [
+      ...prev,
+      userMessage,
+      {
+        id: placeholderId,
+        role: "assistant",
+        timestamp: new Date().toISOString(),
+        isStreaming: true,
+        thinking: [],
+      },
+    ]);
+    setStreamError(null);
+    setIsAwaitingFirstEvent(true);
+
+    await sendStream(
+      {
+        query,
+        threadId,
+        turnIndex,
+        role: user?.role ?? "investigating_officer",
+        detectedLanguage: meta.detectedLanguage,
+        inputModality: meta.inputModality,
+      },
+      {
+        onThinking: (event: ThinkingEvent) => {
+          setIsAwaitingFirstEvent(false);
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === placeholderId ? { ...m, thinking: [...(m.thinking ?? []), event] } : m,
+            ),
+          );
+        },
+        onDone: (finalMessage: ChatMessage) => {
+          setIsAwaitingFirstEvent(false);
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === placeholderId
+                ? { ...finalMessage, id: placeholderId, thinking: m.thinking, isStreaming: false }
+                : m,
+            ),
+          );
+          if (finalMessage.threadId) setThreadId(finalMessage.threadId);
+          setTurnIndex((i) => i + 1);
+        },
+        onError: (err: Error) => {
+          // Same distinct-state rule as the non-streaming path below: a
+          // transport failure doesn't leave a ghost bubble in the thread,
+          // ErrorState renders it instead.
+          setIsAwaitingFirstEvent(false);
+          setStreamError(err);
+          setMessages((prev) => prev.filter((m) => m.id !== placeholderId));
+        },
+      },
+    );
+  };
+
+  const handleSendNonStreaming = async (query: string, meta: SendMeta) => {
     const userMessage: ChatMessage = {
       id: `user-${Date.now()}`,
       role: "user",
@@ -77,6 +161,8 @@ export function ChatThread({ inputSize = "default", emptyState }: ChatThreadProp
     }
   };
 
+  const handleSend = supportsStreaming ? handleSendStreaming : handleSendNonStreaming;
+
   return (
     <div className="flex h-full flex-col">
       {messages.length > 0 && (
@@ -93,7 +179,7 @@ export function ChatThread({ inputSize = "default", emptyState }: ChatThreadProp
         {messages.map((message) => (
           <MessageBubble key={message.id} message={message} />
         ))}
-        {isPending && <LoadingState />}
+        {showLoadingSkeleton && <LoadingState />}
         {isError && <ErrorState message={error instanceof Error ? error.message : undefined} />}
         <div ref={bottomRef} />
       </div>

@@ -22,17 +22,43 @@ interface WireCitation {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type WireBlock = Record<string, any>;
 
-interface WireAssistantMessage {
+export interface WireAssistantMessage {
   role: "assistant";
   text?: string | null;
   blocks: WireBlock[];
 }
 
-interface WireAskResponse {
+export interface WireAskResponse {
   thread_id: string;
   message_id: string;
   server_ts: string;
   message: WireAssistantMessage;
+}
+
+/** Shared by `RealAskService.ask()` and `ask-stream-service.ts` so the two
+ * request bodies (one JSON POST, one SSE POST) can't drift apart. */
+export function buildAskRequestBody(input: AskInput): Record<string, unknown> {
+  return {
+    query: input.query,
+    thread_id: input.threadId,
+    turn_index: input.turnIndex,
+    input_modality: input.inputModality === "voice" ? "voice" : "text",
+    detected_language: input.detectedLanguage ?? null,
+    client_ts: new Date().toISOString(),
+  };
+}
+
+/** Terminal `message` SSE payload -> ChatMessage, sharing wireToBlock's
+ * per-block translation with the non-streaming path. */
+export function wireResponseToChatMessage(wire: WireAskResponse): ChatMessage {
+  return {
+    id: wire.message_id,
+    role: "assistant",
+    timestamp: wire.server_ts,
+    text: wire.message.text ?? undefined,
+    blocks: wire.message.blocks.map(wireToBlock),
+    threadId: wire.thread_id,
+  };
 }
 
 function wireCitations(citations: WireCitation[] | null | undefined): Citation[] | undefined {
@@ -46,7 +72,7 @@ function wireCitations(citations: WireCitation[] | null | undefined): Citation[]
   }));
 }
 
-function wireToBlock(block: WireBlock): ContentBlock {
+export function wireToBlock(block: WireBlock): ContentBlock {
   const citations = wireCitations(block.citations);
   switch (block.type) {
     case "text":
@@ -204,14 +230,7 @@ export class RealAskService implements AskService {
           "Content-Type": "application/json",
           Authorization: `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({
-          query: input.query,
-          thread_id: input.threadId,
-          turn_index: input.turnIndex,
-          input_modality: input.inputModality === "voice" ? "voice" : "text",
-          detected_language: input.detectedLanguage ?? null,
-          client_ts: new Date().toISOString(),
-        }),
+        body: JSON.stringify(buildAskRequestBody(input)),
       });
     } catch (err) {
       throw new AskServiceError("network_error", (err as Error).message);
@@ -227,13 +246,6 @@ export class RealAskService implements AskService {
     }
 
     const wire: WireAskResponse = await res.json();
-    return {
-      id: wire.message_id,
-      role: "assistant",
-      timestamp: wire.server_ts,
-      text: wire.message.text ?? undefined,
-      blocks: wire.message.blocks.map(wireToBlock),
-      threadId: wire.thread_id,
-    };
+    return wireResponseToChatMessage(wire);
   }
 }

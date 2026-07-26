@@ -17,6 +17,7 @@ from __future__ import annotations
 import time
 import uuid
 from datetime import datetime, timezone
+from typing import Any, Callable
 
 from app.config import Settings
 from app.schemas import AskRequest, AskResponse, AssistantMessage, CurrentUser
@@ -90,10 +91,11 @@ async def run_turn(
     settings: Settings,
     *,
     request_id: str,
+    on_event: Callable[[dict[str, Any]], None] | None = None,
 ) -> AskResponse:
     turn_start = time.monotonic()
     thread_id = request.thread_id or str(uuid.uuid4())
-    scratchpad = TurnScratchpad()
+    scratchpad = TurnScratchpad(on_event=on_event)
     frame = await build_frame(request, user, settings, on_usage=scratchpad.add_usage)
 
     def _log_usage(specialist_name: str | None, message: AssistantMessage) -> None:

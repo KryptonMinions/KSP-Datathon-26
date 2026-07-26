@@ -75,3 +75,15 @@ export const IO_CASES: IoCase[] = [
 export function getCaseByFir(firId: string): IoCase | undefined {
   return IO_CASES.find((c) => c.firId === firId);
 }
+
+// FIR ids contain a "/" (e.g. "FIR 0142/2026"), which breaks static-export
+// file naming for dynamic routes on generic static hosts. Route links use
+// this slash-free slug instead of a raw encodeURIComponent of the firId.
+export function caseSlug(firId: string): string {
+  return encodeURIComponent(firId.replace(/\//g, "-"));
+}
+
+export function getCaseBySlug(slug: string): IoCase | undefined {
+  const decoded = decodeURIComponent(slug);
+  return IO_CASES.find((c) => c.firId.replace(/\//g, "-") === decoded);
+}

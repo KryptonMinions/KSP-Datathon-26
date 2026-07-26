@@ -111,8 +111,11 @@ class AgentLoop:
             messages.append(_assistant_tool_call_message(response, call_ids))
 
             for call, call_id in zip(response.tool_calls, call_ids):
-                scratchpad.emit_event({"type": "tool_started", "tool": call.name, "args": call.arguments})
                 tool = tool_by_name.get(call.name)
+                label = tool.label if tool else call.name
+                scratchpad.emit_event({
+                    "type": "tool_started", "tool": call.name, "label": label, "args": call.arguments,
+                })
                 if tool is None:
                     result_payload: dict = {"ok": False, "error": f"unknown tool '{call.name}'"}
                 else:
@@ -139,7 +142,7 @@ class AgentLoop:
                 scratchpad.record_tool_use(call.name)
                 summary = json.dumps(result_payload, default=str)
                 scratchpad.emit_event({
-                    "type": "tool_finished", "tool": call.name, "ok": result_payload["ok"],
+                    "type": "tool_finished", "tool": call.name, "label": label, "ok": result_payload["ok"],
                     "result_summary": summary[:2000],
                 })
 

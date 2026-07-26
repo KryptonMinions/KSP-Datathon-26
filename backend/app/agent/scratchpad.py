@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 from pydantic import TypeAdapter
 
@@ -51,6 +51,11 @@ class TurnScratchpad:
     })
     events: list[dict[str, Any]] = field(default_factory=list)
     tools_used: list[str] = field(default_factory=list)
+    # Optional live sink for `/ask/stream` (ASK_STREAM_ENDPOINT_CONTRACT.md) —
+    # called synchronously from emit_event, in addition to the normal
+    # append-to-`events` bookkeeping used by audit. None for the non-streaming
+    # `/ask` path, so behavior there is unchanged.
+    on_event: Callable[[dict[str, Any]], None] | None = None
     _payload_seq: int = 0
     _provenance_seq: int = 0
 
@@ -100,6 +105,8 @@ class TurnScratchpad:
 
     def emit_event(self, event: dict[str, Any]) -> None:
         self.events.append(event)
+        if self.on_event is not None:
+            self.on_event(event)
 
     def provenance_summary(self) -> list[dict[str, str]]:
         """Live list of registered keys for the '## Provenance keys' prompt

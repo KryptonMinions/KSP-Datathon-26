@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRoleGuard } from "@/lib/auth/use-role-guard";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { IO_CASES } from "@/lib/fixtures/cases";
+import { IO_CASES, caseSlug } from "@/lib/fixtures/cases";
 
 /**
  * Cases the investigating officer has worked on (past + ongoing), shown as
@@ -27,7 +27,7 @@ export default function CasesPage() {
         {IO_CASES.map((c) => (
           <Link
             key={c.firId}
-            href={`/cases/${encodeURIComponent(c.firId)}`}
+            href={`/cases/${caseSlug(c.firId)}`}
             className="rounded-md focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
           >
             <Card className="h-full gap-2 py-3 transition-colors hover:border-primary/40">
