@@ -68,6 +68,10 @@ class Settings(BaseSettings):
     catalyst_stratus_bucket: str = ""
     # Cache segment for the thread store (console-created; no API to create one).
     catalyst_cache_segment_id: str = ""
+    # Org context header (CATALYST-ORG) required by QuickML specifically —
+    # Cache/SmartBrowz work fine without it. From the console's multi-org
+    # portal (Manage Organizations), not the same as catalyst_project_id.
+    catalyst_org_id: str = ""
 
 
 @lru_cache

@@ -295,3 +295,21 @@ class AskResponse(BaseModel):
     message_id: str
     server_ts: str
     message: AssistantMessage
+
+
+class ExportTurn(BaseModel):
+    """One turn in a PDF export request. Mirrors frontend ChatMessage — the
+    frontend sends its own on-screen conversation (2026-07-26 PDF export:
+    stateless, no server-side full-history store yet; see
+    steering-docs/POST_OVERNIGHT.md §4 for the deferred durable-storage
+    alternative)."""
+
+    role: Literal["user", "assistant"]
+    timestamp: str
+    text: str | None = None
+    blocks: list[ContentBlock] | None = None
+
+
+class ExportPdfRequest(BaseModel):
+    thread_id: str | None = None
+    turns: list[ExportTurn] = Field(min_length=1)

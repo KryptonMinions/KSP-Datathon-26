@@ -21,10 +21,10 @@ import json
 import time
 from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol
-from urllib.parse import urlparse
 
 import httpx
 
+from app.catalyst import cache_url, catalyst_headers
 from app.config import Settings
 
 
@@ -86,15 +86,10 @@ _CATALYST_MAX_STORED_TURNS = 20
 class CatalystCacheThreadStore:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        tld = urlparse(settings.catalyst_oauth_token_url).netloc.rsplit(".", 1)[-1] or "com"
-        self._api_base = f"https://api.catalyst.zoho.{tld}"
         self._segment_id = settings.catalyst_cache_segment_id
         self._ttl_hours = max(1, round(settings.ask_thread_ttl_s / 3600))
         self._locks: dict[str, asyncio.Lock] = {}
         self._locks_guard = asyncio.Lock()
-        self._token: str | None = None
-        self._token_expires_at: float = 0.0
-        self._token_lock = asyncio.Lock()
 
     async def _lock_for(self, thread_id: str) -> asyncio.Lock:
         async with self._locks_guard:
@@ -104,43 +99,12 @@ class CatalystCacheThreadStore:
                 self._locks[thread_id] = lock
             return lock
 
-    async def _access_token(self) -> str:
-        now = time.monotonic()
-        if self._token and now < self._token_expires_at:
-            return self._token
-        async with self._token_lock:
-            now = time.monotonic()
-            if self._token and now < self._token_expires_at:
-                return self._token
-            async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.post(
-                    self._settings.catalyst_oauth_token_url,
-                    data={
-                        "grant_type": "refresh_token",
-                        "client_id": self._settings.catalyst_oauth_client_id,
-                        "client_secret": self._settings.catalyst_oauth_client_secret,
-                        "refresh_token": self._settings.catalyst_oauth_refresh_token,
-                    },
-                )
-                resp.raise_for_status()
-                body = resp.json()
-            self._token = body["access_token"]
-            # Refresh 60s early so a token never expires mid-request.
-            self._token_expires_at = now + body.get("expires_in", 3600) - 60
-            return self._token
-
-    def _cache_url(self) -> str:
-        return (
-            f"{self._api_base}/baas/v1/project/{self._settings.catalyst_project_id}"
-            f"/segment/{self._segment_id}/cache"
-        )
-
     async def _get_raw(self, thread_id: str) -> list[dict[str, Any]]:
-        token = await self._access_token()
+        headers = await catalyst_headers(self._settings, json_body=False)
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(
-                self._cache_url(),
-                headers={"Authorization": f"Zoho-oauthtoken {token}"},
+                cache_url(self._settings, self._segment_id),
+                headers=headers,
                 params={"cacheKey": thread_id},
             )
         if resp.status_code == 404:
@@ -155,11 +119,11 @@ class CatalystCacheThreadStore:
             return []
 
     async def _put_raw(self, thread_id: str, items: list[dict[str, Any]]) -> None:
-        token = await self._access_token()
+        headers = await catalyst_headers(self._settings)
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.post(
-                self._cache_url(),
-                headers={"Authorization": f"Zoho-oauthtoken {token}", "Content-Type": "application/json"},
+                cache_url(self._settings, self._segment_id),
+                headers=headers,
                 json={
                     "cache_name": thread_id,
                     "cache_value": json.dumps(items),

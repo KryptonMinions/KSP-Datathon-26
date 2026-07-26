@@ -8,3 +8,4 @@ cryptography
 httpx
 sarvamai
 sqlglot
+markdown

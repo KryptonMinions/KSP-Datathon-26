@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Download, Loader2 } from "lucide-react";
 import type { ChatMessage } from "@/lib/types/content-blocks";
 import { useAuth } from "@/lib/auth/auth-context";
 import { useAsk } from "@/lib/ask/use-ask";
+import { exportSessionPdf } from "@/lib/export/export-pdf";
+import { Button } from "@/components/ui/button";
 import { MessageBubble } from "./MessageBubble";
 import { QueryInput, type SendMeta } from "./QueryInput";
 import { LoadingState } from "@/components/shared/LoadingState";
@@ -27,10 +30,24 @@ export function ChatThread({ inputSize = "default", emptyState }: ChatThreadProp
   const [turnIndex, setTurnIndex] = useState(0);
   const { mutateAsync, isPending, isError, error } = useAsk();
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages, isPending]);
+
+  const handleExport = async () => {
+    setExportError(null);
+    setIsExporting(true);
+    try {
+      await exportSessionPdf(messages, threadId);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   const handleSend = async (query: string, meta: SendMeta) => {
     const userMessage: ChatMessage = {
@@ -62,6 +79,15 @@ export function ChatThread({ inputSize = "default", emptyState }: ChatThreadProp
 
   return (
     <div className="flex h-full flex-col">
+      {messages.length > 0 && (
+        <div className="flex items-center justify-end gap-2 border-b border-border px-4 py-1.5">
+          {exportError && <span className="text-xs text-destructive">{exportError}</span>}
+          <Button variant="outline" size="sm" onClick={handleExport} disabled={isExporting}>
+            {isExporting ? <Loader2 className="animate-spin" /> : <Download />}
+            Export PDF
+          </Button>
+        </div>
+      )}
       <div className="flex-1 space-y-4 overflow-y-auto p-4">
         {messages.length === 0 && emptyState}
         {messages.map((message) => (

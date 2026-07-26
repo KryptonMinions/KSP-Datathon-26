@@ -266,3 +266,4 @@ Architecture.md
 # raw query text, local ops telemetry only, never committed.
 backend/logs/
 
+E2E_TESTING_GAPS.md

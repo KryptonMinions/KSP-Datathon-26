@@ -89,8 +89,13 @@ Classify a police officer's natural-language question into exactly one query_cla
 entities mentioned. Respond with ONLY a JSON object matching the exact shape below, no prose, no markdown fences.
 
 query_class values (pick exactly one):
-- lookup: antecedents/priors check on a person, or a simple existence/status check ("check antecedents of X", \
-"is vehicle X stolen", "any cases for Y")
+- lookup: antecedents/priors check on a person, a simple existence/status check ("check antecedents of X", \
+"is vehicle X stolen", "any cases for Y"), OR a general reference/factual question answerable from the case \
+database's reference tables — districts, police stations, BNS sections, crime-type taxonomy, MO codes \
+("how many districts are there in Karnataka", "what does BNS 304 cover", "list stations in Mysuru district"). \
+This is the catch-all for any simple, factual, non-analytical question grounded in the database — prefer \
+lookup over unresolved whenever the question is answerable with a straightforward query, even if it isn't \
+about a specific person or case.
 - case_detail: about one specific FIR/case ("show me FIR KA-...", "status of case X")
 - pattern: modus-operandi / similar-case matching ("similar cases", "same method", "how were the solved ones cracked")
 - network: associates/gang/connections graph ("who does X operate with", "show the network around X", "who received the stolen vehicles")

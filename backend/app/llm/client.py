@@ -18,6 +18,7 @@ from typing import Any, Callable
 
 import httpx
 
+from app.catalyst import catalyst_headers
 from app.config import Settings
 
 from .errors import (
@@ -83,10 +84,22 @@ class LLMClient:
         self._timeout = settings.llm_request_timeout_s
 
     async def _post(self, profile: Profile, payload: dict[str, Any]) -> dict[str, Any]:
-        url = f"{profile.base_url}/chat/completions"
-        headers = {"Content-Type": "application/json"}
-        if profile.api_key:
-            headers["Authorization"] = f"Bearer {profile.api_key}"
+        if profile.name == "intent":
+            # Zoho Catalyst QuickML (O-9): the configured base_url is already the
+            # complete model endpoint (e.g. .../quickml/v1/project/{id}/glm/chat) —
+            # no /chat/completions suffix — and auth is the same Catalyst OAuth
+            # (Zoho-oauthtoken, refreshed via the project's self-client) used by
+            # Cache/SmartBrowz, not a static Bearer API key. Verified live against
+            # a real GLM-4.7-Flash deployment before being wired in here — request/
+            # response bodies otherwise match OpenAI's chat-completions shape.
+            url = profile.base_url
+            headers = await catalyst_headers(self._settings)
+            headers["CATALYST-ORG"] = self._settings.catalyst_org_id
+        else:
+            url = f"{profile.base_url}/chat/completions"
+            headers = {"Content-Type": "application/json"}
+            if profile.api_key:
+                headers["Authorization"] = f"Bearer {profile.api_key}"
 
         last_exc: Exception | None = None
         for attempt in range(self._max_retries + 1):
@@ -99,7 +112,19 @@ class LLMClient:
                 last_exc = LLMProviderError(f"{profile.name} transport error: {exc}")
             else:
                 if resp.status_code == 200:
-                    return resp.json()
+                    body = resp.json()
+                    if profile.name == "intent" and "choices" not in body and "response" in body:
+                        # QuickML's actual live response shape is flat
+                        # ({"response": text, "usage": {...}}), not the
+                        # choices[]-wrapped shape its console's sample
+                        # response showed — normalize so _parse() (shared
+                        # with the OpenAI-compatible profiles) still works.
+                        body = {
+                            "choices": [{"message": {"content": body.get("response"), "tool_calls": []},
+                                         "finish_reason": "stop"}],
+                            "usage": body.get("usage", {}),
+                        }
+                    return body
                 # Retry only on 429/5xx; 4xx (bad request) fails fast.
                 if resp.status_code not in (429, 500, 502, 503, 504):
                     raise LLMProviderError(
@@ -159,6 +184,11 @@ class LLMClient:
         }
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
+        if p.name == "intent":
+            # QuickML/GLM defaults to emitting a visible chain-of-thought
+            # reasoning block before the final content (verified live) — we
+            # only want the final answer for the classify call, so disable it.
+            payload["chat_template_kwargs"] = {"enable_thinking": False}
         return self._parse(await self._post(p, payload))
 
     async def complete_with_tools(
