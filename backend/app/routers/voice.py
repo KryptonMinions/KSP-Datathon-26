@@ -62,6 +62,12 @@ async def transcribe(
             ),
             model="saaras:v3",
             mode="codemix",
+            # Omitting language_code entirely does not reliably trigger
+            # auto-detect on Sarvam's end -- explicit "unknown" is required
+            # (matches Sarvam's own reference integrations). Without this,
+            # saaras:v3 was defaulting transcription to a fixed language
+            # regardless of what was actually spoken.
+            language_code="unknown",
         )
     except ApiError as exc:
         # Never surface raw provider error text to the client (§5).
