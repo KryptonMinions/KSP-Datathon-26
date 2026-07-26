@@ -50,7 +50,12 @@ _build_pack_report = BuildPackReportTool()
 CASE_INVESTIGATOR = SpecialistConfig(
     name="case_investigator",
     profile="fast",
-    max_iterations=8,
+    # Bumped 6->8->10 on live evidence, not guesswork: a thorough antecedents
+    # check (history sheet + FIR involvement + narrative entries + gang
+    # membership = ~7 tool calls) ran out of budget at 8 with zero iterations
+    # left to write the final answer, and no payload registered to fall back
+    # on (none of run_sql/get_schema/resolve_entity register one).
+    max_iterations=10,
     tools=[_run_sql, _get_schema, _resolve_entity, _get_case, _mo_match],
     allowed_blocks=frozenset({"text", "table", "case_card", "mo_match", "no_answer"}),
     prompt_file="case_investigator.v1.md",

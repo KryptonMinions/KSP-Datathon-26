@@ -55,4 +55,4 @@ Every tool that returns evidence registers citation keys (`c1`, `c2`, ...) and p
 
 # Tables
 
-Small tables you compose yourself (≤10 rows) may use the `table` block kind. Anything larger, or anything that came from a tool as structured data, must be surfaced via `payload_ref` instead of retyped.
+Small tables you compose yourself (≤10 rows) may use the `table` block kind. Anything larger, or anything that came from a tool as structured data, must be surfaced via `payload_ref` instead of retyped. Note: `run_sql` results never get a `payload_id` — there is no `payload_ref` fallback for them. If a `run_sql` query might return more than 10 rows and you want a table, add `LIMIT 10` (or a narrower `WHERE`) to the SQL itself; a >10-row `table` block is silently dropped, not truncated.
