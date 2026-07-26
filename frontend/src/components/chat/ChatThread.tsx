@@ -12,7 +12,6 @@ import { exportSessionPdf } from "@/lib/export/export-pdf";
 import { Button } from "@/components/ui/button";
 import { MessageBubble } from "./MessageBubble";
 import { QueryInput, type SendMeta } from "./QueryInput";
-import { LoadingState } from "@/components/shared/LoadingState";
 import { ErrorState } from "@/components/shared/ErrorState";
 
 // Resolved once at module load, mirroring the mock/real toggle in
@@ -179,7 +178,12 @@ export function ChatThread({ inputSize = "default", emptyState }: ChatThreadProp
         {messages.map((message) => (
           <MessageBubble key={message.id} message={message} />
         ))}
-        {showLoadingSkeleton && <LoadingState />}
+        {showLoadingSkeleton && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="size-3.5 shrink-0 animate-spin" />
+            Thinking…
+          </div>
+        )}
         {isError && <ErrorState message={error instanceof Error ? error.message : undefined} />}
         <div ref={bottomRef} />
       </div>
