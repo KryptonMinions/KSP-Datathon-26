@@ -1,38 +1,55 @@
-# KSP Datathon 2026 — Challenge 1
+# KSP Datathon 2026 
 
 Karnataka State Police — Intelligent Conversational AI & Crime Analytics
-Platform. Full architecture specs live in `steering-docs/`.
+Platform. 
 
 ## Directory structure
 
+**Application services**
+
 ```
-backend/             FastAPI service — auth, /ask orchestrator agent, voice
-                      intake, PDF export. See backend/README.md.
-frontend/             Next.js app (dashboard, cases, ask, admin). See
-                      frontend/README.md.
-embeddings-service/   Standalone microservice serving multilingual-e5-base
-                      embeddings for RAG retrieval. See
-                      embeddings-service/README.md.
-db/                   Hand-authored SQL migrations + curated reference CSVs.
-                      See db/README.md.
-dataset/              Raw, read-only source data (boundaries, station maps,
-                      BNS/IPC PDFs) the seed pipeline builds from. See
-                      dataset/README.md.
-scripts/seed/         Seeding pipeline: normalizes dataset/ → loads db/
-                      migrations → populates Supabase with reference data,
-                      golden demo threads, Kannada translations, and
-                      embeddings. Order and details in db/README.md.
-steering-docs/        Architecture and design specs (auth, orchestrator,
-                      semantic layer, data schema, demo scenarios, etc.) —
-                      the source of truth for how the system is supposed to
-                      behave.
-References/           Datathon challenge brief PDFs (data discovery, demo
-                      script, evaluation criteria, semantic layer, trust
-                      design).
-client/               Unused default Catalyst client scaffold, superseded by
-                      frontend/out (the actual deployed static export).
-catalyst.json, .catalystrc   Zoho Catalyst deployment config (see
-                      Deployment below).
+backend/              FastAPI service — auth, /ask orchestrator agent, voice
+                       intake, PDF export. See backend/README.md.
+frontend/              Next.js app (dashboard, cases, ask, admin). See
+                       frontend/README.md.
+embeddings-service/    Standalone microservice serving multilingual-e5-base
+                       embeddings for RAG retrieval. See
+                       embeddings-service/README.md.
+```
+
+**Data & schema**
+
+```
+db/                    Hand-authored SQL migrations + curated reference CSVs.
+                       See db/README.md.
+dataset/               Raw, read-only source data (boundaries, station maps,
+                       BNS/IPC PDFs) the seed pipeline builds from. See
+                       dataset/README.md.
+scripts/seed/          Seeding pipeline: normalizes dataset/ → loads db/
+                       migrations → populates Supabase with reference data,
+                       golden demo threads, Kannada translations, and
+                       embeddings. Order and details in db/README.md.
+```
+
+**Docs & references**
+
+```
+steering-docs/         Architecture and design specs (auth, orchestrator,
+                       semantic layer, data schema, demo scenarios, etc.) —
+                       the source of truth for how the system is supposed to
+                       behave.
+References/            Datathon challenge brief PDFs (data discovery, demo
+                       script, evaluation criteria, semantic layer, trust
+                       design).
+```
+
+**Deployment config**
+
+```
+client/                Unused default Catalyst client scaffold, superseded by
+                       frontend/out (the actual deployed static export).
+catalyst.json,         Zoho Catalyst deployment config (see Deployment
+.catalystrc            below).
 ```
 
 ## Running locally
@@ -96,43 +113,25 @@ golden demo threads, Kannada translations, and embeddings). See
 
 ## Deployment
 
-The backend and embeddings service deploy as separate Docker containers to
-Zoho Catalyst AppSail; the frontend deploys as a Catalyst static client from
-its Next.js static export (`frontend/out`). `catalyst.json` declares both;
-`backend/Dockerfile` and `embeddings-service/Dockerfile` both bind to the
-port Catalyst injects via `X_ZOHO_CATALYST_LISTEN_PORT` (falling back to
-8080 for local `docker run`). Production env vars (Supabase, LLM profiles,
-Catalyst OAuth/cache/Stratus settings) are configured per-environment in
-Catalyst, not committed to the repo — `backend/app-config.json` (gitignored)
-holds the local copy used for deploys.
+The app is hosted entirely on [Zoho Catalyst](https://www.catalyst.zoho.com/),
+Zoho's serverless application platform, across three of its services:
 
-### Frontend on Vercel (alternative to the Catalyst client)
+- **AppSail** — runs the `backend` and `embeddings-service` as separate
+  Docker containers. `catalyst.json` declares the AppSail entry for the
+  backend; `backend/Dockerfile` and `embeddings-service/Dockerfile` both bind
+  to the port Catalyst injects via `X_ZOHO_CATALYST_LISTEN_PORT` (falling
+  back to 8080 for local `docker run`).
+- **Client** — serves the frontend's Next.js static export (`frontend/out`)
+  as a static site; also declared in `catalyst.json`.
+- **Cache / Stratus / QuickML** — supporting Catalyst services used at
+  runtime by the backend (response caching, object storage, and the
+  in-platform LLM used for intent classification respectively); configured
+  via env vars, not declared in `catalyst.json`.
 
-The frontend can also deploy to Vercel instead of (or alongside) the
-Catalyst static client — same Next.js static export (`output: "export"` in
-`frontend/next.config.ts`), no code changes needed for that part. Vercel
-auto-detects the Next.js framework and serves the export directly.
+Production env vars (Supabase, LLM profiles, Catalyst OAuth/cache/Stratus
+settings) are configured per-environment in Catalyst, not committed to the
+repo — `backend/app-config.json` (gitignored) holds the local copy used for
+deploys. Deployed URLs are intentionally not listed here; ask a maintainer
+for the current environment link.
 
-1. **Import the repo in Vercel** and set **Root Directory** to `frontend` in
-   the project's General settings — this is a monorepo, so Vercel needs to
-   know the Next.js app isn't at the repo root. Build/output settings can be
-   left on the Next.js framework defaults.
-2. **Environment variables** (Project Settings → Environment Variables, set
-   for Production and Preview):
-   - No backend is deployed yet, so run the frontend standalone against its
-     fixture data: set `NEXT_PUBLIC_ASK_SERVICE=mock`. Leave
-     `NEXT_PUBLIC_API_URL` unset in this mode — auth, voice, and export calls
-     fall back to `http://localhost:8000`, which won't resolve on Vercel, so
-     those features won't work until a real backend URL is added (see
-     `frontend/README.md` for the mock-vs-real toggle).
-   - Once a backend is deployed (Catalyst AppSail or elsewhere), set
-     `NEXT_PUBLIC_API_URL` to its public URL and remove
-     `NEXT_PUBLIC_ASK_SERVICE` (or set it to unset/`real`) to switch the Ask
-     page to live data.
-3. **Backend CORS**, once a real backend is wired up: set the backend's
-   `FRONTEND_ORIGIN` env var to include the Vercel domain, comma-separated
-   alongside any other origins that need access, e.g.
-   `FRONTEND_ORIGIN=http://localhost:3000,https://your-app.vercel.app`
-   (`backend/app/config.py` splits this into a list for
-   `CORSMiddleware.allow_origins`). Without this, the browser will block
-   every request from the Vercel-hosted frontend with a CORS error.
+
