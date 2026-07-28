@@ -37,24 +37,7 @@ catalyst.json, .catalystrc   Zoho Catalyst deployment config (see
 
 ## Running locally
 
-Three servers, run in separate terminals. Start the embeddings service
-before the backend if you're running `ASK_ENGINE=agent` — the agent's
-`search_narratives` tool calls it at query time.
-
-### 1. Embeddings service
-
-```bash
-cd embeddings-service
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env   # set EMBEDDINGS_API_KEY to match backend/.env, or leave blank for local dev
-uvicorn app.main:app --reload --port 8081
-```
-
-Runs at http://localhost:8081. First request downloads the embedding model
-from Hugging Face (~450MB) and caches it. See `embeddings-service/README.md`.
-
-### 2. Backend (FastAPI)
+### 1. Backend (FastAPI)
 
 ```bash
 cd backend
@@ -76,7 +59,7 @@ engine locally.
 > Work around it with `python -m uvicorn app.main:app --reload --workers 1`,
 > or rebuild the venv.
 
-### 3. Frontend (Next.js)
+### 2. Frontend (Next.js)
 
 ```bash
 cd frontend
