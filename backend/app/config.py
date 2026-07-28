@@ -11,7 +11,14 @@ class Settings(BaseSettings):
     supabase_publishable_key: str
     supabase_secret_key: str
     synthetic_email_domain: str = "ksp.internal"
+    # Comma-separated list of allowed CORS origins (e.g. local dev + a
+    # deployed Vercel frontend at once). No wildcards — every origin the
+    # frontend can run from must be listed explicitly.
     frontend_origin: str = "http://localhost:3000"
+
+    @property
+    def frontend_origins(self) -> list[str]:
+        return [o.strip() for o in self.frontend_origin.split(",") if o.strip()]
 
     # Sarvam AI Saaras v3 STT (VOICE_INTAKE_STEERING.md §7). Backend-only secret.
     sarvam_api_key: str = ""

@@ -110,3 +110,34 @@ port Catalyst injects via `X_ZOHO_CATALYST_LISTEN_PORT` (falling back to
 Catalyst OAuth/cache/Stratus settings) are configured per-environment in
 Catalyst, not committed to the repo — `backend/app-config.json` (gitignored)
 holds the local copy used for deploys.
+
+### Frontend on Vercel (alternative to the Catalyst client)
+
+The frontend can also deploy to Vercel instead of (or alongside) the
+Catalyst static client — same Next.js static export (`output: "export"` in
+`frontend/next.config.ts`), no code changes needed for that part. Vercel
+auto-detects the Next.js framework and serves the export directly.
+
+1. **Import the repo in Vercel** and set **Root Directory** to `frontend` in
+   the project's General settings — this is a monorepo, so Vercel needs to
+   know the Next.js app isn't at the repo root. Build/output settings can be
+   left on the Next.js framework defaults.
+2. **Environment variables** (Project Settings → Environment Variables, set
+   for Production and Preview):
+   - No backend is deployed yet, so run the frontend standalone against its
+     fixture data: set `NEXT_PUBLIC_ASK_SERVICE=mock`. Leave
+     `NEXT_PUBLIC_API_URL` unset in this mode — auth, voice, and export calls
+     fall back to `http://localhost:8000`, which won't resolve on Vercel, so
+     those features won't work until a real backend URL is added (see
+     `frontend/README.md` for the mock-vs-real toggle).
+   - Once a backend is deployed (Catalyst AppSail or elsewhere), set
+     `NEXT_PUBLIC_API_URL` to its public URL and remove
+     `NEXT_PUBLIC_ASK_SERVICE` (or set it to unset/`real`) to switch the Ask
+     page to live data.
+3. **Backend CORS**, once a real backend is wired up: set the backend's
+   `FRONTEND_ORIGIN` env var to include the Vercel domain, comma-separated
+   alongside any other origins that need access, e.g.
+   `FRONTEND_ORIGIN=http://localhost:3000,https://your-app.vercel.app`
+   (`backend/app/config.py` splits this into a list for
+   `CORSMiddleware.allow_origins`). Without this, the browser will block
+   every request from the Vercel-hosted frontend with a CORS error.

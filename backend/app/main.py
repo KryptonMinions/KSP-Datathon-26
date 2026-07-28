@@ -8,7 +8,7 @@ app = FastAPI(title="KSP Datathon Backend")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[get_settings().frontend_origin],
+    allow_origins=get_settings().frontend_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
