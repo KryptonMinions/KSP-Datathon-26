@@ -91,6 +91,18 @@ See `backend/README.md`, `frontend/README.md`, and
 `embeddings-service/README.md` for full setup (Supabase migrations, demo
 user provisioning, mock-vs-real Ask service toggle).
 
+### Demo credentials
+
+For evaluators — accounts seeded by `backend/scripts/demo_users.json` via
+`backend/scripts/provision_users.py`:
+
+| Username         | Password      | Role                   | Officer ID   |
+| ---------------- | ------------- | ---------------------- | ------------ |
+| `io.demo`         | `I0_ER`       | investigating_officer  | KSP-23417    |
+| `supervisor.demo` | `$upervis0r`  | supervisor              | KSP-70068    |
+| `analyst.demo`    | `An@lyst`     | analyst                 | KSP-87128    |
+| `admin.demo`      | `@dmin`       | admin                   | —            |
+
 ### Database
 
 The backend and agent expect a Supabase Postgres instance with the schema in

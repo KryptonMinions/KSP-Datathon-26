@@ -1,0 +1,6 @@
+[
+  { "username": "io.demo", "password": "I0_ER", "role": "investigating_officer", "officer_id": "KSP-23417" },
+  { "username": "supervisor.demo", "password": "$upervis0r", "role": "supervisor", "officer_id": "KSP-70068" },
+  { "username": "analyst.demo", "password": "An@lyst", "role": "analyst", "officer_id": "KSP-87128" },
+  { "username": "admin.demo", "password": "@dmin", "role": "admin" }
+]
